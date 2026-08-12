@@ -1,3 +1,13 @@
+<p align="center">
+  <img src="docs/banner/banner.svg" alt="Enterprise Network Simulation Lab" width="100%">
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/licence-MIT-blue.svg" alt="MIT licence">
+  <img src="https://img.shields.io/badge/stage-0%20walking%20skeleton-f5a524.svg" alt="Stage 0">
+  <img src="https://img.shields.io/badge/host-x86__64%20only-important.svg" alt="x86_64 only">
+</p>
+
 # Enterprise Network Simulation Lab
 
 A reproducible enterprise network simulator. Synthetic office workers generate
@@ -59,9 +69,14 @@ make run                    # pki -> up -> config -> traffic -> verify
 ## Repository layout
 
 ```
-docs/       architecture and staging plan
-stage0/     walking skeleton (see stage0/README.md)
+docs/           architecture and staging plan
+docs/banner/    banner source + generator
+stage0/         walking skeleton (see stage0/README.md)
 ```
+
+The banner is generated, not hand-drawn — `python3 docs/banner/make_banner.py`
+rebuilds it after an architecture change. A PNG is committed alongside the SVG;
+swap the `img src` in this file if you prefer it.
 
 ## Note on the cSRX image
 
@@ -99,3 +114,4 @@ their licences will be recorded here — likely MIT assets from
 retaining the copyright notice) or CC0 assets from Kenney.nl. MIT on a
 repository does not automatically cover third-party art it vendors, so each
 asset pack needs checking individually.
+# network_simulation
