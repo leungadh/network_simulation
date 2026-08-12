@@ -1,0 +1,63 @@
+# cSRX 26.2R1 — Stage 0 bootstrap configuration
+#
+# Load with:  ./csrx/apply-config.sh
+# Or manually: docker exec -it csrx cli
+#              configure
+#              load set terminal   (paste, then Ctrl-D)
+#              commit
+#
+# Design notes:
+#   * NO source NAT. This is deliberate — it keeps the source port that the
+#     engine recorded identical to the one cSRX logs, so the intent<->flow
+#     join stays clean. Adding NAT later means capturing the nat_* fields.
+#   * structured-data syslog. RT_FLOW then emits key="value" pairs, which are
+#     far easier to parse than the positional format, and Stage 1's Vector
+#     config depends on it.
+#   * permit-all policy with logging. Stage 0 proves the path; policy
+#     granularity arrives in Stage 2.
+
+set system host-name csrx-lab
+set system services ssh
+set system services netconf ssh
+
+# --- Syslog to the sink on the management network ------------------------
+set system syslog host 172.30.0.20 any any
+set system syslog host 172.30.0.20 structured-data
+set system syslog host 172.30.0.20 source-address 172.30.0.10
+
+# --- Interfaces ----------------------------------------------------------
+# These must match the ipv4_address values in docker-compose.yml. cSRX may
+# inherit the Docker-assigned addresses on startup depending on version;
+# configuring them identically makes the result the same either way.
+set interfaces ge-0/0/0 unit 0 family inet address 10.10.0.1/16
+set interfaces ge-0/0/1 unit 0 family inet address 203.0.113.1/24
+
+# --- Zones ---------------------------------------------------------------
+set security zones security-zone trust interfaces ge-0/0/0.0 host-inbound-traffic system-services all
+set security zones security-zone trust interfaces ge-0/0/0.0 host-inbound-traffic protocols all
+set security zones security-zone untrust interfaces ge-0/0/1.0 host-inbound-traffic system-services all
+set security zones security-zone untrust interfaces ge-0/0/1.0 host-inbound-traffic protocols all
+
+# --- Application identification (AppSecure) ------------------------------
+# This is what populates the `application` and `nested-application` fields
+# in RT_FLOW_SESSION_CLOSE. Without an AppSecure licence these stay UNKNOWN.
+set services application-identification
+set security zones security-zone trust application-tracking
+
+# --- Policy --------------------------------------------------------------
+# Log both session-init and session-close. session-close carries the byte and
+# packet counters plus the AppID result, and is the record Stage 1 ingests.
+# session-init is logged too because it is the most reliable place to observe
+# the original source port.
+set security policies from-zone trust to-zone untrust policy permit-all match source-address any
+set security policies from-zone trust to-zone untrust policy permit-all match destination-address any
+set security policies from-zone trust to-zone untrust policy permit-all match application any
+set security policies from-zone trust to-zone untrust policy permit-all then permit
+set security policies from-zone trust to-zone untrust policy permit-all then log session-init
+set security policies from-zone trust to-zone untrust policy permit-all then log session-close
+
+# --- Flow options --------------------------------------------------------
+# Keep the session table generous; Stage 2 scales to 25 workers and Stage 6
+# introduces scanning attacks that open many short-lived sessions.
+set security flow tcp-session no-syn-check
+set security flow tcp-session no-sequence-check

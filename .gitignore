@@ -1,0 +1,38 @@
+# ---- Never commit these ----------------------------------------------
+# cSRX is licensed Juniper software. The image and any licence keys must
+# not go into a repo, public or private.
+*.tgz
+*.tar.gz
+csrx-*.img
+*.lic
+licen[cs]e-key*
+junos-*.tgz
+
+# Secrets and local config
+.env
+*.pem
+
+# Generated PKI. `make pki` recreates it; committing a CA private key is
+# a bad habit even for a lab CA.
+**/pki/*.crt
+**/pki/*.key
+**/pki/*.srl
+
+# Run outputs — regenerated every run, and they get large fast.
+**/out/*
+!**/out/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Editors / OS
+.DS_Store
+.vscode/
+.idea/
+*.swp
+
+# Bridge scratch
+_to_delete/

@@ -1,0 +1,146 @@
+# Stage 0 — walking skeleton
+#
+#   3 workers  ->  br-trust  ->  cSRX  ->  br-untrust  ->  nginx (TLS)
+#                                  |
+#                                br-mgmt  ->  syslog sink
+#
+# Goal: prove one flow end to end with correct worker attribution.
+# Deliberately minimal. No NAT, no personas, no ClickHouse.
+
+name: netsim-stage0
+
+networks:
+  # Management. cSRX fxp0 lives here and sends syslog to the sink.
+  mgmt:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+    driver_opts:
+      com.docker.network.bridge.name: br-mgmt
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+
+  # Trust zone. Workers live here.
+  trust:
+    driver: bridge
+    internal: true          # guarantees no real-internet egress
+    ipam:
+      config:
+        - subnet: 10.10.0.0/16
+    driver_opts:
+      com.docker.network.bridge.name: br-trust
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+
+  # Untrust zone — the "fake internet". TEST-NET-3, unroutable by design.
+  untrust:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 203.0.113.0/24
+    driver_opts:
+      com.docker.network.bridge.name: br-untrust
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+
+services:
+
+  # ---------------------------------------------------------------
+  # cSRX 26.2R1
+  #
+  # Interface ordering is load-bearing. `priority` controls the order
+  # Docker attaches networks, which sets the eth0/eth1/eth2 mapping:
+  #     eth0 -> fxp0        (management)
+  #     eth1 -> ge-0/0/0    (trust)
+  #     eth2 -> ge-0/0/1    (untrust)
+  # Higher priority attaches first. Do not rely on declaration order.
+  # ---------------------------------------------------------------
+  csrx:
+    image: ${CSRX_IMAGE:-csrx:26.2R1}
+    container_name: csrx
+    privileged: true          # required by Juniper; cSRX will not start without it
+    environment:
+      CSRX_FORWARD_MODE: "routing"
+      # Default is "poll", which spins a core continuously and looks like a
+      # runaway process on a shared lab box. "interrupt" is the sane lab choice.
+      # Switch to "poll" or "dpdk" only when measuring throughput.
+      CSRX_PACKET_DRIVER: "interrupt"
+      CSRX_HUGEPAGES: "no"
+      CSRX_PORT_NUM: "3"
+    networks:
+      mgmt:
+        ipv4_address: 172.30.0.10
+        priority: 1000
+      trust:
+        ipv4_address: 10.10.0.1
+        priority: 900
+      untrust:
+        ipv4_address: 203.0.113.1
+        priority: 800
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep srxpfe || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+
+  # ---------------------------------------------------------------
+  # Syslog sink. Receives RT_FLOW from cSRX, writes raw + parsed CSV.
+  # Stage 1 replaces this with Vector -> ClickHouse.
+  # ---------------------------------------------------------------
+  syslog-sink:
+    build: ./telemetry
+    container_name: syslog-sink
+    networks:
+      mgmt:
+        ipv4_address: 172.30.0.20
+    volumes:
+      - ./out:/out
+    environment:
+      RUN_ID: ${RUN_ID:-stage0-dev}
+
+  # ---------------------------------------------------------------
+  # The "internet" — one TLS site for now.
+  # ---------------------------------------------------------------
+  web:
+    build: ./internet
+    container_name: web
+    networks:
+      untrust:
+        ipv4_address: 203.0.113.10
+    cap_add:
+      - NET_ADMIN            # needed to add the return route via cSRX
+    environment:
+      RETURN_ROUTE: "10.10.0.0/16 via 203.0.113.1"
+    volumes:
+      - ./pki:/pki:ro
+    depends_on:
+      csrx:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------
+  # Workstation — hosts all 3 workers as coroutines, one source IP each.
+  # A worker is NOT a container. See plan section 4.1.
+  # ---------------------------------------------------------------
+  workstation:
+    build: ./workstation
+    container_name: workstation
+    networks:
+      trust:
+        ipv4_address: 10.10.0.100
+    cap_add:
+      - NET_ADMIN            # to add per-worker secondary IPs
+    environment:
+      RUN_ID: ${RUN_ID:-stage0-dev}
+      SEED: ${SEED:-1337}
+      WORKER_COUNT: ${WORKER_COUNT:-3}
+      TARGET_HOST: ${TARGET_HOST:-www.example-corp.internal}
+      TARGET_IP: "203.0.113.10"
+      GATEWAY: "10.10.0.1"
+      DURATION_S: ${DURATION_S:-300}
+    volumes:
+      - ./out:/out
+      - ./pki:/pki:ro
+    depends_on:
+      web:
+        condition: service_started
