@@ -95,6 +95,14 @@ plan §4.1.
 real internet, and the untrust subnet is TEST-NET-3 (`203.0.113.0/24`), which
 is unroutable by design. Two independent safeguards.
 
+**The docker bridge is moved off `.1`.** Docker assigns the first host address
+of each subnet to the bridge interface itself. That is the address cSRX needs,
+since in a firewall lab the firewall should be the gateway — so each network
+sets an explicit `gateway:` at the top of its range (`.255.254` on the /16,
+`.254` on the /24s). Without this, starting cSRX fails with
+`failed to set up container networking: Address already in use`. The bridge
+address is never used: all three networks are `internal`, so it routes nowhere.
+
 **Everything is name-prefixed.** Containers are `netsim-*` and bridges
 `br-ns-*` so the lab can coexist with other labs on the same host. Bare names
 like `csrx` or `web` collide with anything else already running.
@@ -173,6 +181,16 @@ address as an IP SAN, so a stale cert fails TLS:
 ```bash
 rm -f pki/*.crt pki/*.key pki/*.srl && make pki && make down && make run
 ```
+
+**`Address already in use` when cSRX starts.** A container address collides
+with the docker bridge's own gateway. Check what the bridge holds:
+
+```bash
+docker network inspect netsim-stage0_trust \
+  --format '{{range .IPAM.Config}}subnet={{.Subnet}} gateway={{.Gateway}}{{end}}'
+```
+
+The gateway must not equal any `ipv4_address` in `docker-compose.yml`.
 
 **No flows at all.** Check syslog is leaving cSRX:
 

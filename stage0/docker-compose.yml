@@ -20,6 +20,8 @@ networks:
     ipam:
       config:
         - subnet: ${MGMT_PREFIX:-172.30.0}.0/24
+          # Docker would otherwise take .1 — the address cSRX needs.
+          gateway: ${MGMT_PREFIX:-172.30.0}.254
     driver_opts:
       com.docker.network.bridge.name: br-ns-mgmt
       com.docker.network.bridge.enable_ip_masquerade: "false"
@@ -33,6 +35,10 @@ networks:
     ipam:
       config:
         - subnet: ${TRUST_PREFIX:-10.20}.0.0/16
+          # The docker bridge is pushed to the top of the range so cSRX can own
+          # .0.1 and act as the real gateway. These networks are internal, so
+          # the bridge address routes nowhere and is never used.
+          gateway: ${TRUST_PREFIX:-10.20}.255.254
     driver_opts:
       com.docker.network.bridge.name: br-ns-trust
       com.docker.network.bridge.enable_ip_masquerade: "false"
@@ -44,6 +50,7 @@ networks:
     ipam:
       config:
         - subnet: ${UNTRUST_PREFIX:-203.0.113}.0/24
+          gateway: ${UNTRUST_PREFIX:-203.0.113}.254
     driver_opts:
       com.docker.network.bridge.name: br-ns-untrust
       com.docker.network.bridge.enable_ip_masquerade: "false"
