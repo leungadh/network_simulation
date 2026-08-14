@@ -95,6 +95,10 @@ plan §4.1.
 real internet, and the untrust subnet is TEST-NET-3 (`203.0.113.0/24`), which
 is unroutable by design. Two independent safeguards.
 
+**Everything is name-prefixed.** Containers are `netsim-*` and bridges
+`br-ns-*` so the lab can coexist with other labs on the same host. Bare names
+like `csrx` or `web` collide with anything else already running.
+
 **Addressing lives in `.env` only.** `TRUST_PREFIX`, `MGMT_PREFIX` and
 `UNTRUST_PREFIX` feed the compose networks, the Junos interface config (via
 placeholders in `bootstrap.set` substituted at apply time), the worker IP
@@ -127,7 +131,7 @@ actual mapping before pushing config.
 Check it manually:
 
 ```bash
-docker exec csrx ip -br addr show
+docker exec netsim-csrx ip -br addr show
 ```
 
 ---
@@ -173,24 +177,24 @@ rm -f pki/*.crt pki/*.key pki/*.srl && make pki && make down && make run
 **No flows at all.** Check syslog is leaving cSRX:
 
 ```bash
-docker exec -it csrx cli -c 'show configuration system syslog'
-docker logs syslog-sink
+docker exec -it netsim-csrx cli -c 'show configuration system syslog'
+docker logs netsim-syslog-sink
 ```
 
 **Workers cannot reach the web server.** The workstation entrypoint runs a
-curl check at startup — read `docker logs workstation`. Then confirm the
+curl check at startup — read `docker logs netsim-workstation`. Then confirm the
 firewall is passing:
 
 ```bash
-docker exec -it csrx cli -c 'show security flow session'
-docker exec -it csrx cli -c 'show security policies detail'
+docker exec -it netsim-csrx cli -c 'show security flow session'
+docker exec -it netsim-csrx cli -c 'show security policies detail'
 ```
 
 **`application` is UNKNOWN.** Confirm the licence and that AppID is running:
 
 ```bash
-docker exec -it csrx cli -c 'show system license'
-docker exec -it csrx cli -c 'show services application-identification status'
+docker exec -it netsim-csrx cli -c 'show system license'
+docker exec -it netsim-csrx cli -c 'show services application-identification status'
 ```
 
 **Join rate below 98%.** `verify.py` distinguishes the two causes: matched-on-

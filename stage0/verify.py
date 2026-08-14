@@ -59,7 +59,7 @@ def load():
         sys.exit(1)
     if not os.path.exists(INTENTS):
         print(f"{RED}intents.jsonl not found at {INTENTS}{RESET}")
-        print("The engine never ran or could not write. Check: docker logs workstation")
+        print("The engine never ran or could not write. Check: docker logs netsim-workstation")
         sys.exit(1)
 
     with open(FLOWS) as fh:

@@ -1,8 +1,11 @@
 # Stage 0 — walking skeleton
 #
-#   3 workers  ->  br-trust  ->  cSRX  ->  br-untrust  ->  nginx (TLS)
+#   3 workers -> br-ns-trust -> cSRX -> br-ns-untrust -> nginx (TLS)
 #                                  |
-#                                br-mgmt  ->  syslog sink
+#                            br-ns-mgmt -> syslog sink
+#
+# Containers and bridges are prefixed so this lab can coexist with others on
+# the same host — bare names like "csrx" or "web" collide.
 #
 # Goal: prove one flow end to end with correct worker attribution.
 # Deliberately minimal. No NAT, no personas, no ClickHouse.
@@ -18,7 +21,7 @@ networks:
       config:
         - subnet: ${MGMT_PREFIX:-172.30.0}.0/24
     driver_opts:
-      com.docker.network.bridge.name: br-mgmt
+      com.docker.network.bridge.name: br-ns-mgmt
       com.docker.network.bridge.enable_ip_masquerade: "false"
 
   # Trust zone. Workers live here.
@@ -31,7 +34,7 @@ networks:
       config:
         - subnet: ${TRUST_PREFIX:-10.20}.0.0/16
     driver_opts:
-      com.docker.network.bridge.name: br-trust
+      com.docker.network.bridge.name: br-ns-trust
       com.docker.network.bridge.enable_ip_masquerade: "false"
 
   # Untrust zone — the "fake internet". TEST-NET-3, unroutable by design.
@@ -42,7 +45,7 @@ networks:
       config:
         - subnet: ${UNTRUST_PREFIX:-203.0.113}.0/24
     driver_opts:
-      com.docker.network.bridge.name: br-untrust
+      com.docker.network.bridge.name: br-ns-untrust
       com.docker.network.bridge.enable_ip_masquerade: "false"
 
 services:
@@ -64,7 +67,7 @@ services:
     # report "pull access denied", which points at credentials rather than at
     # the real cause. `never` fails with an honest image-not-found instead.
     pull_policy: never
-    container_name: csrx
+    container_name: netsim-csrx
     privileged: true          # required by Juniper; cSRX will not start without it
     environment:
       CSRX_FORWARD_MODE: "routing"
@@ -97,7 +100,7 @@ services:
   # ---------------------------------------------------------------
   syslog-sink:
     build: ./telemetry
-    container_name: syslog-sink
+    container_name: netsim-syslog-sink
     networks:
       mgmt:
         ipv4_address: ${MGMT_PREFIX:-172.30.0}.20
@@ -111,7 +114,7 @@ services:
   # ---------------------------------------------------------------
   web:
     build: ./internet
-    container_name: web
+    container_name: netsim-web
     networks:
       untrust:
         ipv4_address: ${UNTRUST_PREFIX:-203.0.113}.10
@@ -131,7 +134,7 @@ services:
   # ---------------------------------------------------------------
   workstation:
     build: ./workstation
-    container_name: workstation
+    container_name: netsim-workstation
     networks:
       trust:
         ipv4_address: ${TRUST_PREFIX:-10.20}.0.100

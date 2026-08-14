@@ -7,7 +7,7 @@
 
 set -euo pipefail
 
-CONTAINER="${CONTAINER:-csrx}"
+CONTAINER="${CONTAINER:-netsim-csrx}"
 CONFIG="$(dirname "$0")/bootstrap.set"
 
 # Network prefixes come from .env so the lab can be moved off a colliding
