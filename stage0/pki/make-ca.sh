@@ -11,6 +11,13 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+# The server cert's IP SAN must match the untrust address, or TLS fails after
+# a subnet move. Pull it from .env rather than hardcoding.
+ENV_FILE="../.env"
+# shellcheck disable=SC1090
+[ -f "${ENV_FILE}" ] && . "${ENV_FILE}"
+UNTRUST_PREFIX="${UNTRUST_PREFIX:-203.0.113}"
+
 DAYS=3650
 HOSTS=(
     "www.example-corp.internal"
@@ -35,7 +42,7 @@ openssl genrsa -out server.key 2048 2>/dev/null
 
 SAN=""
 for h in "${HOSTS[@]}"; do SAN="${SAN}DNS:${h},"; done
-SAN="${SAN}IP:203.0.113.10"
+SAN="${SAN}IP:${UNTRUST_PREFIX}.10"
 
 openssl req -new -key server.key \
     -subj "/C=HK/O=NetSim Lab/CN=${HOSTS[0]}" \

@@ -7,7 +7,8 @@
 set -e
 
 WORKER_COUNT="${WORKER_COUNT:-3}"
-GATEWAY="${GATEWAY:-10.10.0.1}"
+TRUST_PREFIX="${TRUST_PREFIX:-10.20}"
+GATEWAY="${GATEWAY:-${TRUST_PREFIX}.0.1}"
 IFACE="${IFACE:-eth0}"
 
 echo "==> allocating ${WORKER_COUNT} worker addresses on ${IFACE}"
@@ -15,7 +16,7 @@ i=0
 while [ "${i}" -lt "${WORKER_COUNT}" ]; do
     octet3=$(( i / 254 + 1 ))
     octet4=$(( i % 254 + 1 ))
-    addr="10.10.${octet3}.${octet4}/16"
+    addr="${TRUST_PREFIX}.${octet3}.${octet4}/16"
     ip addr add "${addr}" dev "${IFACE}" 2>/dev/null \
         && echo "    worker ${i} -> ${addr}" \
         || echo "    worker ${i} -> ${addr} (already present)"
@@ -37,12 +38,12 @@ fi
 
 echo "==> connectivity check through the firewall"
 if curl -sS --max-time 10 --cacert /pki/ca.crt \
-        --interface 10.10.1.1 \
+        --interface "${TRUST_PREFIX}.1.1" \
         "https://${TARGET_HOST}/" -o /dev/null -w '    HTTP %{http_code} in %{time_total}s\n'; then
     echo "    path is up"
 else
     echo "!! could not reach ${TARGET_HOST} through cSRX." >&2
-    echo "   Check interface ordering (eth1 should be 10.10.0.1) and that" >&2
+    echo "   Check interface ordering (eth1 should be ${GATEWAY}) and that" >&2
     echo "   the bootstrap config was applied." >&2
 fi
 

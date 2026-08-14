@@ -55,7 +55,7 @@ def load():
     if not os.path.exists(FLOWS):
         print(f"{RED}flows.csv not found at {FLOWS}{RESET}")
         print("The syslog sink never received RT_FLOW. Check that the cSRX")
-        print("bootstrap config was applied and syslog points at 172.30.0.20.")
+        print("bootstrap config was applied and syslog points at the sink.")
         sys.exit(1)
     if not os.path.exists(INTENTS):
         print(f"{RED}intents.jsonl not found at {INTENTS}{RESET}")

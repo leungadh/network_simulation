@@ -21,16 +21,17 @@ set system services ssh
 set system services netconf ssh
 
 # --- Syslog to the sink on the management network ------------------------
-set system syslog host 172.30.0.20 any any
-set system syslog host 172.30.0.20 structured-data
-set system syslog host 172.30.0.20 source-address 172.30.0.10
+# Prefix placeholders are substituted by apply-config.sh from .env.
+set system syslog host __MGMT_PREFIX__.20 any any
+set system syslog host __MGMT_PREFIX__.20 structured-data
+set system syslog host __MGMT_PREFIX__.20 source-address __MGMT_PREFIX__.10
 
 # --- Interfaces ----------------------------------------------------------
 # These must match the ipv4_address values in docker-compose.yml. cSRX may
 # inherit the Docker-assigned addresses on startup depending on version;
 # configuring them identically makes the result the same either way.
-set interfaces ge-0/0/0 unit 0 family inet address 10.10.0.1/16
-set interfaces ge-0/0/1 unit 0 family inet address 203.0.113.1/24
+set interfaces ge-0/0/0 unit 0 family inet address __TRUST_PREFIX__.0.1/16
+set interfaces ge-0/0/1 unit 0 family inet address __UNTRUST_PREFIX__.1/24
 
 # --- Zones ---------------------------------------------------------------
 set security zones security-zone trust interfaces ge-0/0/0.0 host-inbound-traffic system-services all

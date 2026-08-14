@@ -95,6 +95,12 @@ plan §4.1.
 real internet, and the untrust subnet is TEST-NET-3 (`203.0.113.0/24`), which
 is unroutable by design. Two independent safeguards.
 
+**Addressing lives in `.env` only.** `TRUST_PREFIX`, `MGMT_PREFIX` and
+`UNTRUST_PREFIX` feed the compose networks, the Junos interface config (via
+placeholders in `bootstrap.set` substituted at apply time), the worker IP
+allocator, and the certificate SANs. Moving the lab off a colliding subnet is
+a one-line change, and it can run alongside other labs on the same host.
+
 **Structured-data syslog.** RT_FLOW then emits `key="value"` pairs instead of
 the positional format. Stage 1's Vector config depends on this.
 
@@ -105,10 +111,13 @@ the positional format. Stage 1's Vector config depends on this.
 cSRX maps container interfaces in attachment order:
 
 ```
-eth0 -> fxp0       management   172.30.0.10
-eth1 -> ge-0/0/0   trust        10.10.0.1
-eth2 -> ge-0/0/1   untrust      203.0.113.1
+eth0 -> fxp0       management   ${MGMT_PREFIX}.10      default 172.30.0.10
+eth1 -> ge-0/0/0   trust        ${TRUST_PREFIX}.0.1    default 10.20.0.1
+eth2 -> ge-0/0/1   untrust      ${UNTRUST_PREFIX}.1    default 203.0.113.1
 ```
+
+`apply-config.sh` prints the expected values for your `.env` before it pushes,
+so compare against that rather than the defaults above.
 
 Docker Compose's `priority` field controls that order (higher attaches first).
 Declaration order is *not* reliable. If this is wrong, traffic will not pass
@@ -124,6 +133,42 @@ docker exec csrx ip -br addr show
 ---
 
 ## Troubleshooting
+
+**`pull access denied for csrx`.** The tag in `.env` does not match the image
+you loaded. Docker cannot find it locally, assumes it is a registry image, and
+tries to pull — there is no cSRX in any public registry, so the error is about
+credentials rather than the real cause. Juniper tags include the build number:
+
+```bash
+docker images | grep csrx          # e.g. csrx  26.2R1.7
+sed -i 's|^CSRX_IMAGE=.*|CSRX_IMAGE=csrx:26.2R1.7|' .env
+```
+
+**`Pool overlaps with other one on this address space`.** A subnet here
+collides with an existing docker network or host route. Find the culprit:
+
+```bash
+docker network ls -q | xargs -n1 docker network inspect \
+  --format '{{.Name}} {{range .IPAM.Config}}{{.Subnet}}{{end}}'
+ip -br route
+```
+
+If it is a stale network, `docker network prune`. If it belongs to something
+you need, move this lab instead — the three prefixes in `.env` are the only
+place addressing is defined:
+
+```bash
+TRUST_PREFIX=10.30            # expands to 10.30.0.0/16
+MGMT_PREFIX=172.31.0          # expands to 172.31.0.0/24
+UNTRUST_PREFIX=198.51.100     # expands to 198.51.100.0/24
+```
+
+Regenerate the PKI after moving — the server certificate carries the untrust
+address as an IP SAN, so a stale cert fails TLS:
+
+```bash
+rm -f pki/*.crt pki/*.key pki/*.srl && make pki && make down && make run
+```
 
 **No flows at all.** Check syslog is leaving cSRX:
 

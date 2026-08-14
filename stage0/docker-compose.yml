@@ -16,18 +16,20 @@ networks:
     internal: true
     ipam:
       config:
-        - subnet: 172.30.0.0/24
+        - subnet: ${MGMT_PREFIX:-172.30.0}.0/24
     driver_opts:
       com.docker.network.bridge.name: br-mgmt
       com.docker.network.bridge.enable_ip_masquerade: "false"
 
   # Trust zone. Workers live here.
+  # TRUST_PREFIX is the first TWO octets; the worker allocator uses the third
+  # octet to scale past 254 workers, so this must stay a /16.
   trust:
     driver: bridge
     internal: true          # guarantees no real-internet egress
     ipam:
       config:
-        - subnet: 10.10.0.0/16
+        - subnet: ${TRUST_PREFIX:-10.20}.0.0/16
     driver_opts:
       com.docker.network.bridge.name: br-trust
       com.docker.network.bridge.enable_ip_masquerade: "false"
@@ -38,7 +40,7 @@ networks:
     internal: true
     ipam:
       config:
-        - subnet: 203.0.113.0/24
+        - subnet: ${UNTRUST_PREFIX:-203.0.113}.0/24
     driver_opts:
       com.docker.network.bridge.name: br-untrust
       com.docker.network.bridge.enable_ip_masquerade: "false"
@@ -56,7 +58,12 @@ services:
   # Higher priority attaches first. Do not rely on declaration order.
   # ---------------------------------------------------------------
   csrx:
-    image: ${CSRX_IMAGE:-csrx:26.2R1}
+    image: ${CSRX_IMAGE:?set CSRX_IMAGE in .env to your loaded tag, e.g. csrx:26.2R1.7}
+    # The image is loaded locally from the Juniper tarball and does not exist in
+    # any registry. Without this, a tag mismatch makes Docker try to pull and
+    # report "pull access denied", which points at credentials rather than at
+    # the real cause. `never` fails with an honest image-not-found instead.
+    pull_policy: never
     container_name: csrx
     privileged: true          # required by Juniper; cSRX will not start without it
     environment:
@@ -69,13 +76,13 @@ services:
       CSRX_PORT_NUM: "3"
     networks:
       mgmt:
-        ipv4_address: 172.30.0.10
+        ipv4_address: ${MGMT_PREFIX:-172.30.0}.10
         priority: 1000
       trust:
-        ipv4_address: 10.10.0.1
+        ipv4_address: ${TRUST_PREFIX:-10.20}.0.1
         priority: 900
       untrust:
-        ipv4_address: 203.0.113.1
+        ipv4_address: ${UNTRUST_PREFIX:-203.0.113}.1
         priority: 800
     healthcheck:
       test: ["CMD-SHELL", "pgrep srxpfe || exit 1"]
@@ -93,7 +100,7 @@ services:
     container_name: syslog-sink
     networks:
       mgmt:
-        ipv4_address: 172.30.0.20
+        ipv4_address: ${MGMT_PREFIX:-172.30.0}.20
     volumes:
       - ./out:/out
     environment:
@@ -107,11 +114,11 @@ services:
     container_name: web
     networks:
       untrust:
-        ipv4_address: 203.0.113.10
+        ipv4_address: ${UNTRUST_PREFIX:-203.0.113}.10
     cap_add:
       - NET_ADMIN            # needed to add the return route via cSRX
     environment:
-      RETURN_ROUTE: "10.10.0.0/16 via 203.0.113.1"
+      RETURN_ROUTE: "${TRUST_PREFIX:-10.20}.0.0/16 via ${UNTRUST_PREFIX:-203.0.113}.1"
     volumes:
       - ./pki:/pki:ro
     depends_on:
@@ -127,7 +134,7 @@ services:
     container_name: workstation
     networks:
       trust:
-        ipv4_address: 10.10.0.100
+        ipv4_address: ${TRUST_PREFIX:-10.20}.0.100
     cap_add:
       - NET_ADMIN            # to add per-worker secondary IPs
     environment:
@@ -135,8 +142,9 @@ services:
       SEED: ${SEED:-1337}
       WORKER_COUNT: ${WORKER_COUNT:-3}
       TARGET_HOST: ${TARGET_HOST:-www.example-corp.internal}
-      TARGET_IP: "203.0.113.10"
-      GATEWAY: "10.10.0.1"
+      TARGET_IP: "${UNTRUST_PREFIX:-203.0.113}.10"
+      GATEWAY: "${TRUST_PREFIX:-10.20}.0.1"
+      TRUST_PREFIX: "${TRUST_PREFIX:-10.20}"
       DURATION_S: ${DURATION_S:-300}
     volumes:
       - ./out:/out
