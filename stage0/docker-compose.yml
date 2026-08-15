@@ -55,51 +55,13 @@ networks:
       com.docker.network.bridge.name: br-ns-untrust
       com.docker.network.bridge.enable_ip_masquerade: "false"
 
-services:
+# NOTE: cSRX is deliberately NOT a service here. Docker does not guarantee the
+# order networks are attached at container creation, and cSRX maps interfaces
+# positionally (eth0=fxp0, eth1=ge-0/0/0, eth2=ge-0/0/1). csrx/launch.sh starts
+# it on management alone and connects the data networks one at a time, then
+# verifies the mapping. See "Interface ordering" in README.md.
 
-  # ---------------------------------------------------------------
-  # cSRX 26.2R1
-  #
-  # Interface ordering is load-bearing. `priority` controls the order
-  # Docker attaches networks, which sets the eth0/eth1/eth2 mapping:
-  #     eth0 -> fxp0        (management)
-  #     eth1 -> ge-0/0/0    (trust)
-  #     eth2 -> ge-0/0/1    (untrust)
-  # Higher priority attaches first. Do not rely on declaration order.
-  # ---------------------------------------------------------------
-  csrx:
-    image: ${CSRX_IMAGE:?set CSRX_IMAGE in .env to your loaded tag, e.g. csrx:26.2R1.7}
-    # The image is loaded locally from the Juniper tarball and does not exist in
-    # any registry. Without this, a tag mismatch makes Docker try to pull and
-    # report "pull access denied", which points at credentials rather than at
-    # the real cause. `never` fails with an honest image-not-found instead.
-    pull_policy: never
-    container_name: netsim-csrx
-    privileged: true          # required by Juniper; cSRX will not start without it
-    environment:
-      CSRX_FORWARD_MODE: "routing"
-      # Default is "poll", which spins a core continuously and looks like a
-      # runaway process on a shared lab box. "interrupt" is the sane lab choice.
-      # Switch to "poll" or "dpdk" only when measuring throughput.
-      CSRX_PACKET_DRIVER: "interrupt"
-      CSRX_HUGEPAGES: "no"
-      CSRX_PORT_NUM: "3"
-    networks:
-      mgmt:
-        ipv4_address: ${MGMT_PREFIX:-172.30.0}.10
-        priority: 1000
-      trust:
-        ipv4_address: ${TRUST_PREFIX:-10.20}.0.1
-        priority: 900
-      untrust:
-        ipv4_address: ${UNTRUST_PREFIX:-203.0.113}.1
-        priority: 800
-    healthcheck:
-      test: ["CMD-SHELL", "pgrep srxpfe || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 60s
+services:
 
   # ---------------------------------------------------------------
   # Syslog sink. Receives RT_FLOW from cSRX, writes raw + parsed CSV.
@@ -131,9 +93,6 @@ services:
       RETURN_ROUTE: "${TRUST_PREFIX:-10.20}.0.0/16 via ${UNTRUST_PREFIX:-203.0.113}.1"
     volumes:
       - ./pki:/pki:ro
-    depends_on:
-      csrx:
-        condition: service_healthy
 
   # ---------------------------------------------------------------
   # Workstation — hosts all 3 workers as coroutines, one source IP each.

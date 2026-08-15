@@ -44,12 +44,18 @@ traffic for `DURATION_S` → verify.
 Or step by step:
 
 ```bash
-make pki       # lab CA + server cert (once)
-make up        # build and start everything
-make config    # push the Junos bootstrap config
-make traffic   # follow the engine until it finishes
-make verify    # check the exit criteria
+make pki          # lab CA + server cert (once)
+make check-order  # prove docker honours interface connect order (~10s)
+make up           # networks, syslog sink, cSRX (ordered), web
+make config       # push the Junos bootstrap config
+make traffic      # run the workers and follow them
+make verify       # check the exit criteria
 ```
+
+`make check-order` is worth running once on a new host. It attaches three
+networks to a throwaway alpine container and prints the resulting interface
+map. If that does not come out in order, cSRX has no chance either, and you
+want to know before debugging a firewall.
 
 ---
 
@@ -120,7 +126,7 @@ the positional format. Stage 1's Vector config depends on this.
 
 ## Interface ordering — the most likely thing to break
 
-cSRX maps container interfaces in attachment order:
+cSRX maps container interfaces **positionally**:
 
 ```
 eth0 -> fxp0       management   ${MGMT_PREFIX}.10      default 172.30.0.10
@@ -128,19 +134,36 @@ eth1 -> ge-0/0/0   trust        ${TRUST_PREFIX}.0.1    default 10.20.0.1
 eth2 -> ge-0/0/1   untrust      ${UNTRUST_PREFIX}.1    default 203.0.113.1
 ```
 
-`apply-config.sh` prints the expected values for your `.env` before it pushes,
-so compare against that rather than the defaults above.
+Get this wrong and you have a firewall wired back-to-front: containers healthy,
+logs clean, no traffic. It is the single most expensive failure in Stage 0
+because nothing looks broken.
 
-Docker Compose's `priority` field controls that order (higher attaches first).
-Declaration order is *not* reliable. If this is wrong, traffic will not pass
-and the logs look completely normal — which is why `apply-config.sh` prints the
-actual mapping before pushing config.
+**Docker will not give you this order reliably.** When several networks are
+declared at container creation, the attach order is not guaranteed
+([moby#25181](https://github.com/moby/moby/issues/25181)), and Compose's
+`priority` field does not dependably control it either. This was observed
+first-hand here: with `priority` set, `eth0` came up holding the *trust*
+address and the management address was absent entirely.
 
-Check it manually:
+**So cSRX is not a compose service.** `csrx/launch.sh` follows Juniper's
+documented procedure instead — start the container attached to the management
+network alone, then `docker network connect` the data networks one at a time.
+Each connect on a running container adds exactly one interface, in call order.
+The script then *verifies* the mapping and refuses to continue if it is wrong,
+rather than leaving you to discover it after a traffic run.
+
+Everything else stays in compose; only cSRX needs the special handling.
+
+Check the mapping by hand any time:
 
 ```bash
-docker exec netsim-csrx ip -br addr show
+docker exec netsim-csrx ip -o -4 addr show
 ```
+
+Note that `eth1` and `eth2` showing no address *after cSRX has started* is
+normal — the dataplane takes them over and the addresses appear on `tap0` and
+`tap1` instead. What matters is the mapping at launch, which `launch.sh` checks
+before the dataplane claims them.
 
 ---
 
@@ -225,13 +248,14 @@ or keep-alive.
 
 ```
 stage0/
-├── docker-compose.yml       networks, interface priority, service wiring
+├── docker-compose.yml       networks and the non-cSRX services
 ├── Makefile                 pki / up / config / traffic / verify
 ├── .env.example
 ├── verify.py                exit-criteria check
 ├── csrx/
 │   ├── bootstrap.set        Junos config (zones, AppID, syslog, policy)
-│   └── apply-config.sh      pushes it after the container is healthy
+│   ├── launch.sh            ordered launch + interface-mapping verification
+│   └── apply-config.sh      pushes config after the container is healthy
 ├── internet/                nginx + TLS, the fake internet
 ├── pki/make-ca.sh           lab CA and server certificate
 ├── telemetry/syslog_sink.py RT_FLOW -> flows.csv
