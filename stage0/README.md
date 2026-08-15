@@ -8,6 +8,10 @@ Proves the whole path end to end at minimum width:
                               br-mgmt  ->  syslog sink  ->  out/flows.csv
 ```
 
+<p align="center">
+  <img src="../docs/topology/topology.svg" alt="Stage 0 topology" width="100%">
+</p>
+
 Nothing here is meant to be realistic. The only question Stage 0 answers is
 **can the firewall see individual workers and classify what they are doing** —
 because everything in Stages 1–7 assumes it can.

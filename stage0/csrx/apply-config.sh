@@ -79,7 +79,49 @@ ${RENDERED}
 commit and-quit
 EOF
 
-echo "==> done. Verify with:"
-echo "    docker exec -it ${CONTAINER} cli -c 'show interfaces terse'"
-echo "    docker exec -it ${CONTAINER} cli -c 'show security policies'"
-echo "    docker exec -it ${CONTAINER} cli -c 'show security flow session'"
+# The Junos CLI frequently exits 0 even when a commit fails, so confirm the
+# configuration is actually present rather than trusting the exit status.
+echo
+echo "==> confirming the commit took"
+fail=0
+want() {  # description, cli-command, pattern
+    if docker exec "${CONTAINER}" cli -c "$2" 2>/dev/null | grep -qE "$3"; then
+        echo "     OK   $1"
+    else
+        echo "     FAIL $1"
+        fail=1
+    fi
+}
+
+want "ge-0/0/0 has ${TRUST_PREFIX}.0.1" \
+     "show configuration interfaces" "${TRUST_PREFIX}\.0\.1/16"
+want "ge-0/0/1 has ${UNTRUST_PREFIX}.1" \
+     "show configuration interfaces" "${UNTRUST_PREFIX}\.1/24"
+want "trust zone bound to ge-0/0/0" \
+     "show configuration security zones" "security-zone trust"
+want "untrust zone bound to ge-0/0/1" \
+     "show configuration security zones" "security-zone untrust"
+want "permit-all policy present" \
+     "show configuration security policies" "permit-all"
+want "session-close logging enabled" \
+     "show configuration security policies" "session-close"
+want "syslog host is ${MGMT_PREFIX}.20" \
+     "show configuration system syslog" "${MGMT_PREFIX}\.20"
+
+echo
+echo "==> interface state"
+docker exec "${CONTAINER}" cli -c 'show interfaces terse' 2>/dev/null \
+    | grep -E '^(ge-|fxp)' | sed 's/^/     /' || true
+
+if [ "${fail}" -ne 0 ]; then
+    echo
+    echo "!! The configuration did not commit cleanly. Inspect interactively:" >&2
+    echo "     docker exec -it ${CONTAINER} cli" >&2
+    echo "     > configure" >&2
+    echo "     > load set terminal      (paste csrx/bootstrap.set, Ctrl-D)" >&2
+    echo "     > commit                 (read the error it prints)" >&2
+    exit 1
+fi
+
+echo
+echo "==> config verified. Next: make traffic"

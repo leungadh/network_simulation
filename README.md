@@ -44,6 +44,7 @@ replayed with and without an attack.
 | 7 | Response loop — alert to policy push | not started |
 
 Full design: [`docs/architecture_and_staging_plan.md`](docs/architecture_and_staging_plan.md)
+Stage 0 topology: [`docs/topology/topology.svg`](docs/topology/topology.svg)
 
 ## Requirements
 
@@ -71,6 +72,7 @@ make run                    # pki -> up -> config -> traffic -> verify
 ```
 docs/           architecture and staging plan
 docs/banner/    banner source + generator
+docs/topology/  Stage 0 topology diagram + generator
 stage0/         walking skeleton (see stage0/README.md)
 ```
 

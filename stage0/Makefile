@@ -67,9 +67,18 @@ up: pki nets csrx
 config:
 	@./csrx/apply-config.sh
 
+# Recreate rather than start: RUN_ID is baked into the container environment at
+# create time, so `start` would silently reuse a stale run id and mislabel the
+# output.
 traffic:
-	RUN_ID=$(RUN_ID) SEED=$(SEED) docker compose start workstation
+	RUN_ID=$(RUN_ID) SEED=$(SEED) docker compose up -d --force-recreate workstation
 	@docker compose logs -f workstation
+
+# First-hop reachability without depending on the workstation being up.
+ping-gw:
+	@docker run --rm --network $(PROJECT)_trust --ip $(TRUST).1.99 \
+		alpine sh -c 'ip route; echo; ping -c 3 -W 2 $(TRUST).0.1'
+
 
 run: up config traffic verify
 
