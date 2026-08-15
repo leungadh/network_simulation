@@ -51,6 +51,9 @@ fi
 echo "==> starting ${NAME} on management only  -> eth0 ${MGMT_PREFIX}.10"
 docker run -d --name "${NAME}" --privileged \
     --network "${NET_MGMT}" --ip "${MGMT_PREFIX}.10" \
+    --health-cmd 'pgrep srxpfe || exit 1' \
+    --health-interval 10s --health-timeout 5s \
+    --health-retries 12 --health-start-period 60s \
     -e CSRX_FORWARD_MODE=routing \
     -e CSRX_PACKET_DRIVER=interrupt \
     -e CSRX_HUGEPAGES=no \

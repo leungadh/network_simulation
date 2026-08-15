@@ -19,24 +19,39 @@ TRUST_PREFIX="${TRUST_PREFIX:-10.20}"
 MGMT_PREFIX="${MGMT_PREFIX:-172.30.0}"
 UNTRUST_PREFIX="${UNTRUST_PREFIX:-203.0.113}"
 
-echo "==> waiting for ${CONTAINER} to become healthy"
-for i in $(seq 1 60); do
-    status="$(docker inspect -f '{{.State.Health.Status}}' "${CONTAINER}" 2>/dev/null || echo "missing")"
-    if [ "${status}" = "healthy" ]; then
-        echo "    healthy after ${i}0s"
-        break
-    fi
-    if [ "${status}" = "missing" ]; then
-        echo "!! container ${CONTAINER} not found. Did compose up succeed?" >&2
+echo "==> waiting for ${CONTAINER}"
+# Check the dataplane process directly rather than docker health metadata.
+# cSRX is launched by launch.sh rather than compose, and a container without a
+# healthcheck reports an empty status — which previously looked like an
+# indefinite wait instead of a clear error.
+for i in $(seq 1 90); do
+    if ! docker inspect "${CONTAINER}" >/dev/null 2>&1; then
+        echo "!! container ${CONTAINER} does not exist." >&2
+        echo "   Run 'make up' first — it launches cSRX with the correct" >&2
+        echo "   interface ordering before this script runs." >&2
         exit 1
     fi
-    sleep 10
-done
 
-if [ "${status}" != "healthy" ]; then
-    echo "!! ${CONTAINER} never became healthy. Check: docker logs ${CONTAINER}" >&2
-    exit 1
-fi
+    state="$(docker inspect -f '{{.State.Status}}' "${CONTAINER}")"
+    if [ "${state}" != "running" ]; then
+        echo "!! ${CONTAINER} is '${state}', not running." >&2
+        echo "   Last lines of its log:" >&2
+        docker logs --tail 25 "${CONTAINER}" 2>&1 | sed 's/^/     /' >&2
+        exit 1
+    fi
+
+    if docker exec "${CONTAINER}" pgrep srxpfe >/dev/null 2>&1; then
+        echo "    dataplane up after ${i}s"
+        break
+    fi
+
+    if [ "${i}" -eq 90 ]; then
+        echo "!! ${CONTAINER} is running but srxpfe never appeared after 90s." >&2
+        docker logs --tail 30 "${CONTAINER}" 2>&1 | sed 's/^/     /' >&2
+        exit 1
+    fi
+    sleep 1
+done
 
 echo "==> verifying interface mapping before pushing config"
 # If this ordering is wrong, traffic silently will not pass and the logs look
