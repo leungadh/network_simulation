@@ -40,24 +40,36 @@ def _local_port(response: httpx.Response) -> int:
     Recover the source port the OS assigned after bind.
 
     MUST be called while the response stream is still open — see note 3 in the
-    module docstring. Reaching through httpx into the socket is not a stable
-    public API, so this is wrapped defensively: a failure degrades the join to
-    (src_ip, time-window) rather than crashing the run.
+    module docstring.
+
+    Two accessors are tried. `client_addr` is httpcore's documented extra-info
+    key and is forwarded through the TLS wrapper, so it survives version drift
+    better than reaching for the raw socket. The socket path is kept as a
+    fallback. Both are wrapped defensively: failure degrades the join rather
+    than crashing the run, and verify.py reports the capture rate so a silent
+    regression is visible.
     """
+    stream = response.extensions.get("network_stream")
+    if stream is None:
+        return 0
+
     try:
-        stream = response.extensions.get("network_stream")
-        if stream is None:
-            return 0
-        sock = stream.get_extra_info("socket")
-        if sock is None:
-            return 0
-        name = sock.getsockname()
-        return int(name[1]) if name else 0
-    except OSError:
-        # fd already closed — the connection was released too early.
-        return 0
+        addr = stream.get_extra_info("client_addr")
+        if addr and len(addr) >= 2 and addr[1]:
+            return int(addr[1])
     except Exception:
-        return 0
+        pass
+
+    try:
+        sock = stream.get_extra_info("socket")
+        if sock is not None:
+            name = sock.getsockname()
+            if name:
+                return int(name[1])
+    except Exception:
+        pass
+
+    return 0
 
 
 class HttpsAdapter:

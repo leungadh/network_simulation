@@ -51,6 +51,29 @@ def check(name, passed, detail="", warn=False):
     return passed
 
 
+def pick_run(intents, flows):
+    """
+    Both output files are append-only, so they accumulate across runs. Scoring
+    a mixture of runs is meaningless — earlier failed runs drag every rate down.
+    Default to the newest run_id seen in the intent log; override with RUN_ID.
+    """
+    wanted = os.environ.get("RUN_ID")
+    if not wanted:
+        seen = {}
+        for i in intents:
+            rid = i.get("run_id", "")
+            ts = i.get("ts", "")
+            if rid and ts > seen.get(rid, ""):
+                seen[rid] = ts
+        if not seen:
+            return None, intents, flows
+        wanted = max(seen, key=lambda r: seen[r])
+
+    fi = [i for i in intents if i.get("run_id") == wanted]
+    ff = [f for f in flows if f.get("run_id") == wanted]
+    return wanted, fi, ff
+
+
 def load():
     if not os.path.exists(FLOWS):
         print(f"{RED}flows.csv not found at {FLOWS}{RESET}")
@@ -71,7 +94,22 @@ def load():
 
 def main():
     print("\nStage 0 exit criteria\n" + "=" * 50)
-    flows, intents = load()
+    all_flows, all_intents = load()
+
+    run_id, intents, flows = pick_run(all_intents, all_flows)
+    if run_id:
+        print(f"\n  run_id: {run_id}")
+        dropped_i = len(all_intents) - len(intents)
+        dropped_f = len(all_flows) - len(flows)
+        if dropped_i or dropped_f:
+            print(f"  ignoring {dropped_i} intents and {dropped_f} flow events "
+                  f"from earlier runs")
+        if not flows:
+            print(f"\n{RED}No flow events carry this run_id.{RESET}")
+            print("The syslog sink stamps records with the RUN_ID it was started")
+            print("with, which may differ from the workstation's. Restart both:")
+            print("  make down && make up && make config && make traffic")
+            return 1
 
     closes = [f for f in flows if f["event_type"] == "session_close"]
     print(f"\n  {len(flows)} flow events ({len(closes)} closes), {len(intents)} intents\n")

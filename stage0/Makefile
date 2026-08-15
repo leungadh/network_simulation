@@ -67,12 +67,28 @@ up: pki nets csrx
 config:
 	@./csrx/apply-config.sh
 
-# Recreate rather than start: RUN_ID is baked into the container environment at
-# create time, so `start` would silently reuse a stale run id and mislabel the
-# output.
+# Recreate BOTH the sink and the workstation with the same RUN_ID.
+#
+# RUN_ID is baked into each container's environment at create time. The sink
+# stamps it onto flows.csv and the engine stamps it onto intents.jsonl — if the
+# two containers are created by different make invocations they get different
+# ids, and the two halves of the ground truth can never be correlated. This is
+# the only place a run id is minted.
 traffic:
+	@echo "$(RUN_ID)" > out/current_run_id
+	@echo "==> run_id: $(RUN_ID)"
+	RUN_ID=$(RUN_ID) SEED=$(SEED) docker compose up -d --force-recreate syslog-sink
+	@sleep 1
 	RUN_ID=$(RUN_ID) SEED=$(SEED) docker compose up -d --force-recreate workstation
 	@docker compose logs -f workstation
+
+# Score the run recorded by the last `make traffic`.
+verify:
+	@RUN_ID=$$(cat out/current_run_id 2>/dev/null) python3 verify.py
+
+# Diagnose source-port capture, the join key the labelled dataset rests on.
+probe-port:
+	docker compose run --rm workstation python -u /app/probe_port.py
 
 # First-hop reachability without depending on the workstation being up.
 ping-gw:
@@ -81,9 +97,6 @@ ping-gw:
 
 
 run: up config traffic verify
-
-verify:
-	@python3 verify.py
 
 logs:
 	docker compose logs -f
