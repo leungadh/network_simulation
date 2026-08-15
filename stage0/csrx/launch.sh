@@ -74,30 +74,75 @@ done
 
 echo
 echo "==> verifying interface mapping"
-MAP="$(docker exec "${NAME}" ip -o -4 addr show 2>/dev/null || true)"
-echo "${MAP}" | awk '{print "     " $2 "  " $4}'
+#
+# Verify by MAC, not by IP. Once srxpfe starts it claims the revenue ports and
+# moves their addresses onto tap0/tap1, so eth1/eth2 legitimately have no IPv4
+# a few seconds after launch. MAC addresses persist, so matching each ethN to
+# the docker endpoint it belongs to is race-free.
+
+norm() { tr 'A-Z' 'a-z'; }
+
+mac_of_iface() {
+    docker exec "${NAME}" ip -o link show "$1" 2>/dev/null \
+        | grep -oE 'link/ether [0-9a-fA-F:]+' | awk '{print $2}' | norm
+}
+mac_of_net() {
+    docker inspect "${NAME}" \
+        --format "{{(index .NetworkSettings.Networks \"$1\").MacAddress}}" 2>/dev/null | norm
+}
+ip_of_net() {
+    docker inspect "${NAME}" \
+        --format "{{(index .NetworkSettings.Networks \"$1\").IPAddress}}" 2>/dev/null
+}
 
 fail=0
-check() {  # iface, expected-address, junos-name
-    if echo "${MAP}" | grep -qE "^[0-9]+:\s+$1\b.*\binet $2/"; then
-        echo "     OK   $1 = $2  ($3)"
-    else
-        echo "     FAIL $1 should be $2  ($3)"
+check_iface() {  # iface, network, expected-ip, junos-name
+    local iface="$1" net="$2" want="$3" role="$4"
+    local m_if m_net ip
+    m_if="$(mac_of_iface "${iface}")"
+    m_net="$(mac_of_net "${net}")"
+    ip="$(ip_of_net "${net}")"
+
+    if [ -z "${m_if}" ]; then
+        echo "     FAIL ${iface} does not exist  (${role})"
         fail=1
+    elif [ "${m_if}" != "${m_net}" ]; then
+        echo "     FAIL ${iface} is not on ${net}  (${role})"
+        echo "          ${iface} mac=${m_if}  ${net} mac=${m_net}"
+        fail=1
+    elif [ "${ip}" != "${want}" ]; then
+        echo "     FAIL ${net} has ${ip}, expected ${want}  (${role})"
+        fail=1
+    else
+        echo "     OK   ${iface} -> ${net}  ${ip}  (${role})"
     fi
 }
-check eth0 "${MGMT_PREFIX}.10"   "fxp0 management"
-check eth1 "${TRUST_PREFIX}.0.1" "ge-0/0/0 trust"
-check eth2 "${UNTRUST_PREFIX}.1" "ge-0/0/1 untrust"
+
+check_iface eth0 "${NET_MGMT}"    "${MGMT_PREFIX}.10"   "fxp0 management"
+check_iface eth1 "${NET_TRUST}"   "${TRUST_PREFIX}.0.1" "ge-0/0/0 trust"
+check_iface eth2 "${NET_UNTRUST}" "${UNTRUST_PREFIX}.1" "ge-0/0/1 untrust"
+
+# Second, independent confirmation: the dataplane taps should carry the revenue
+# addresses. tap0 backs ge-0/0/0, tap1 backs ge-0/0/1.
+echo
+echo "==> dataplane taps"
+TAPS="$(docker exec "${NAME}" ip -o -4 addr show 2>/dev/null | grep -E ' tap[01] ' || true)"
+if [ -z "${TAPS}" ]; then
+    echo "     (no taps yet — dataplane may still be initialising)"
+else
+    echo "${TAPS}" | awk '{print "     " $2 "  " $4}'
+    echo "${TAPS}" | grep -q "tap0.*${TRUST_PREFIX}\.0\.1/"   && echo "     OK   tap0 = trust   (ge-0/0/0)" || { echo "     FAIL tap0 is not ${TRUST_PREFIX}.0.1"; fail=1; }
+    echo "${TAPS}" | grep -q "tap1.*${UNTRUST_PREFIX}\.1/"     && echo "     OK   tap1 = untrust (ge-0/0/1)" || { echo "     FAIL tap1 is not ${UNTRUST_PREFIX}.1"; fail=1; }
+fi
 
 if [ "${fail}" -ne 0 ]; then
     echo
-    echo "!! Interface ordering is wrong. Do NOT push config on top of this —" >&2
+    echo "!! Interface mapping is wrong. Do NOT push config on top of this —" >&2
     echo "   the firewall would be wired back-to-front and the logs would look" >&2
-    echo "   perfectly healthy. Run 'make check-order' to see whether this" >&2
-    echo "   docker version honours connect ordering at all." >&2
+    echo "   perfectly healthy. Run 'make check-order' to test whether this" >&2
+    echo "   docker honours connect ordering independently of cSRX." >&2
     exit 1
 fi
 
 echo
-echo "==> ordering confirmed. Next: make config"
+echo "==> mapping confirmed. Next: make config"

@@ -161,9 +161,14 @@ docker exec netsim-csrx ip -o -4 addr show
 ```
 
 Note that `eth1` and `eth2` showing no address *after cSRX has started* is
-normal — the dataplane takes them over and the addresses appear on `tap0` and
-`tap1` instead. What matters is the mapping at launch, which `launch.sh` checks
-before the dataplane claims them.
+normal — within about ten seconds `srxpfe` claims the revenue ports and their
+addresses move to `tap0` and `tap1`. Checking `ethN` for an IPv4 address is
+therefore racy and will report a false failure.
+
+`launch.sh` verifies by **MAC address** instead: each `ethN`'s MAC is matched
+against the docker endpoint it should belong to, which survives the dataplane
+takeover. It then separately confirms `tap0` carries the trust address and
+`tap1` the untrust address, giving two independent checks of the same mapping.
 
 ---
 
