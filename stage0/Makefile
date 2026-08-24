@@ -12,6 +12,15 @@ TRUST   := $(shell [ -f ./.env ] && . ./.env; echo $${TRUST_PREFIX:-10.20})
 MGMT    := $(shell [ -f ./.env ] && . ./.env; echo $${MGMT_PREFIX:-172.30.0})
 UNTRUST := $(shell [ -f ./.env ] && . ./.env; echo $${UNTRUST_PREFIX:-203.0.113})
 
+# One switch, two docker settings. Egress requires internal=false AND
+# masquerade=true; setting only one produces a container that can transmit but
+# never receive replies, which looks exactly like "no internet".
+MGMT_EGRESS     := $(shell [ -f ./.env ] && . ./.env; echo $${MGMT_EGRESS:-false})
+MGMT_INTERNAL   := $(if $(filter true,$(MGMT_EGRESS)),false,true)
+MGMT_MASQUERADE := $(if $(filter true,$(MGMT_EGRESS)),true,false)
+export MGMT_INTERNAL
+export MGMT_MASQUERADE
+
 help:
 	@echo "Stage 0 — walking skeleton"
 	@echo
@@ -27,6 +36,7 @@ help:
 	@echo "  make reset        down + wipe outputs (keeps PKI)"
 	@echo
 	@echo "  trust=$(TRUST).0.0/16  mgmt=$(MGMT).0/24  untrust=$(UNTRUST).0/24"
+	@echo "  mgmt egress=$(MGMT_EGRESS)  (internal=$(MGMT_INTERNAL) masquerade=$(MGMT_MASQUERADE))"
 	@echo "  RUN_ID=$(RUN_ID)  SEED=$(SEED)"
 
 pki:
@@ -68,6 +78,11 @@ signatures:
 # Online download. Needs MGMT_INTERNAL=false in .env and `make down && make up`
 # so the management bridge is recreated with egress.
 signatures-online:
+	@echo "--- mgmt egress: $(MGMT_EGRESS) (internal=$(MGMT_INTERNAL) masq=$(MGMT_MASQUERADE)) ---"
+	@[ "$(MGMT_EGRESS)" = "true" ] || { echo "!! set MGMT_EGRESS=true in .env, then: make down && make up"; exit 1; }
+	@echo '--- default route inside cSRX ---'
+	@docker exec netsim-csrx ip route | sed 's/^/    /'
+	@echo
 	@echo '--- can cSRX reach the internet? ---'
 	@docker exec netsim-csrx ping -c 2 -W 3 8.8.8.8 || \
 		{ echo; echo "!! no egress. Set MGMT_INTERNAL=false in .env, then:"; \

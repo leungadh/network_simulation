@@ -19,6 +19,10 @@ networks:
   # signatures.juniper.net to download the AppID database. ONLY this bridge —
   # trust and untrust stay internal, so the simulated data plane still cannot
   # reach the real internet and the lab's isolation guarantee holds.
+  # Egress needs BOTH of these: internal=false to get a default route, and
+  # masquerade=true so replies can find their way back. Setting only one gives
+  # a container that can send and never receive. The Makefile derives both from
+  # MGMT_EGRESS in .env so they cannot drift apart.
   mgmt:
     driver: bridge
     internal: ${MGMT_INTERNAL:-true}
@@ -29,7 +33,7 @@ networks:
           gateway: ${MGMT_PREFIX:-172.30.0}.254
     driver_opts:
       com.docker.network.bridge.name: br-ns-mgmt
-      com.docker.network.bridge.enable_ip_masquerade: "false"
+      com.docker.network.bridge.enable_ip_masquerade: "${MGMT_MASQUERADE:-false}"
 
   # Trust zone. Workers live here.
   # TRUST_PREFIX is the first TWO octets; the worker allocator uses the third
