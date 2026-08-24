@@ -88,7 +88,29 @@ verify:
 
 # Diagnose source-port capture, the join key the labelled dataset rests on.
 probe-port:
-	docker compose run --rm workstation python -u /app/probe_port.py
+	docker compose build workstation
+	docker compose run --rm --entrypoint python workstation -u /app/probe_port.py
+
+# Walk the data path hop by hop. Answers "where do packets stop?" without
+# depending on the workstation container being up.
+path-check:
+	@echo '--- 1. cSRX interfaces (want ge-0/0/0 and ge-0/0/1 up) ---'
+	@docker exec netsim-csrx cli -c 'show interfaces terse' 2>/dev/null | grep -E '^(ge-|fxp)' || true
+	@echo
+	@echo '--- 2. cSRX routes ---'
+	@docker exec netsim-csrx cli -c 'show route' 2>/dev/null | head -20 || true
+	@echo
+	@echo '--- 3. cSRX -> web (does the firewall itself reach the server?) ---'
+	@docker exec netsim-csrx cli -c 'ping $(UNTRUST).10 count 3' 2>/dev/null || true
+	@echo
+	@echo '--- 4. web return route (must be via $(UNTRUST).1) ---'
+	@docker exec netsim-web ip route || true
+	@echo
+	@echo '--- 5. did nginx see ANY request? ---'
+	@docker logs netsim-web 2>&1 | tail -15 || true
+	@echo
+	@echo '--- 6. sessions: look at bytes from server ---'
+	@docker exec netsim-csrx cli -c 'show security flow session' 2>/dev/null | head -30 || true
 
 # First-hop reachability without depending on the workstation being up.
 ping-gw:
