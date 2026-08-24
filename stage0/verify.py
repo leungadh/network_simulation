@@ -139,9 +139,16 @@ def main():
           "No application field populated. Check the AppSecure licence and\n"
           "`set services application-identification`.")
 
-    # 4 — source port capture
-    with_port = sum(1 for i in intents if i.get("src_port", 0) > 0)
-    rate = with_port / len(intents) * 100 if intents else 0
+    # 4 — source port capture.
+    # Only requests that actually established a connection can have a source
+    # port, so failures belong in their own line rather than in this denominator.
+    ok_intents = [i for i in intents if i.get("ok", True)]
+    failed = len(intents) - len(ok_intents)
+    if failed:
+        print(f"  ({failed} of {len(intents)} intents were failed requests, "
+              f"excluded from capture rate)")
+    with_port = sum(1 for i in ok_intents if i.get("src_port", 0) > 0)
+    rate = with_port / len(ok_intents) * 100 if ok_intents else 0
     check(f"source-port capture rate ({rate:.1f}%)", rate >= 95,
           "Below 95% means the httpx socket introspection in adapters/https.py\n"
           "has broken against the installed version. The join degrades to\n"
@@ -154,6 +161,17 @@ def main():
     for i in intents:
         if i.get("src_port"):
             index.setdefault((i["src_ip"], int(i["src_port"])), []).append(i)
+
+    # Flows from addresses the engine never used are infrastructure (startup
+    # health checks, management probes). They have no intent by definition, so
+    # scoring them would measure the wrong thing. Reported, not silently dropped.
+    worker_ips = {i["src_ip"] for i in intents}
+    infra = [f for f in closes if f["src_ip"] not in worker_ips]
+    if infra:
+        from collections import Counter as _C
+        breakdown = ", ".join(f"{ip} x{n}" for ip, n in _C(f["src_ip"] for f in infra).items())
+        print(f"  ({len(infra)} non-worker flow(s) excluded from the join: {breakdown})")
+    closes = [f for f in closes if f["src_ip"] in worker_ips]
 
     matched = 0
     port_only = 0

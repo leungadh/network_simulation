@@ -66,8 +66,10 @@ if [ -n "${TARGET_HOST}" ] && [ -n "${TARGET_IP}" ]; then
 fi
 
 echo "==> connectivity check through the firewall"
+# Deliberately NOT bound to a worker address: this check is infrastructure,
+# and a session from a worker IP with no matching intent would show up as an
+# unjoinable flow and drag down the Stage 0 join rate.
 if curl -sS --max-time 10 --cacert /pki/ca.crt \
-        --interface "${TRUST_PREFIX}.1.1" \
         "https://${TARGET_HOST}/" -o /dev/null -w '    HTTP %{http_code} in %{time_total}s\n'; then
     echo "    path is up"
 else
