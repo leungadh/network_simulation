@@ -272,6 +272,35 @@ Both endpoints need it — the workstation for requests, the web server for
 replies, since the return path crosses the same dataplane. Any service added in
 Stage 2 needs it too.
 
+**`application` is UNKNOWN on every session.** cSRX ships with no signature
+database — check slot 1:
+
+```bash
+docker exec netsim-csrx cli -c 'show services application-identification status'
+```
+
+`Application package version 0` / `Status Free` means AppID is running but has
+nothing to match against. That is correct behaviour, not a fault. Two fixes:
+
+*Offline (keeps the lab airgapped):* download the package from Juniper, then
+
+```bash
+cp <package>.tgz csrx/signatures/ && make signatures
+```
+
+*Online:* give the management bridge egress. Trust and untrust stay internal,
+so the simulated data plane still cannot reach the real internet:
+
+```bash
+sed -i 's/^MGMT_INTERNAL=.*/MGMT_INTERNAL=false/' .env
+make down && make up          # the network must be recreated
+make signatures-online
+```
+
+Either way the database lives in the container filesystem, so `make down`
+destroys it. `make up` reinstalls automatically when a package is present in
+`csrx/signatures/`; after an online download you must repeat it.
+
 **No flows at all.** Check syslog is leaving cSRX:
 
 ```bash

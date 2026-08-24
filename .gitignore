@@ -8,6 +8,10 @@ csrx-*.img
 licen[cs]e-key*
 junos-*.tgz
 
+# Application signature packages — licensed Juniper software, large.
+stage0/csrx/signatures/*
+!stage0/csrx/signatures/README.md
+
 # Secrets and local config
 .env
 *.pem

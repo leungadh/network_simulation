@@ -16,6 +16,8 @@ help:
 	@echo "Stage 0 — walking skeleton"
 	@echo
 	@echo "  make pki          lab CA + server certificate (once)"
+	@echo "  make signatures   install the AppID signature package (see csrx/signatures/)"
+	@echo "  make signatures-online  download it instead (needs MGMT_INTERNAL=false)"
 	@echo "  make check-order  prove docker honours interface connect order"
 	@echo "  make up           networks, sink, cSRX (ordered), web"
 	@echo "  make config       push the Junos bootstrap config"
@@ -58,9 +60,39 @@ check-order: nets
 csrx:
 	@./csrx/launch.sh
 
+# Install the AppID signature database from csrx/signatures/. cSRX ships with
+# none, so without this every session is classified UNKNOWN.
+signatures:
+	@./csrx/install-signatures.sh
+
+# Online download. Needs MGMT_INTERNAL=false in .env and `make down && make up`
+# so the management bridge is recreated with egress.
+signatures-online:
+	@echo '--- can cSRX reach the internet? ---'
+	@docker exec netsim-csrx ping -c 2 -W 3 8.8.8.8 || \
+		{ echo; echo "!! no egress. Set MGMT_INTERNAL=false in .env, then:"; \
+		  echo "     make down && make up"; exit 1; }
+	@echo
+	@echo '--- can it resolve the download server? ---'
+	@docker exec netsim-csrx getent hosts signatures.juniper.net || \
+		echo "!! DNS failed — add 'set system name-server 8.8.8.8' to bootstrap.set"
+	@echo
+	docker exec -it netsim-csrx cli -c 'request services application-identification download'
+	@sleep 5
+	docker exec -it netsim-csrx cli -c 'request services application-identification download status'
+	docker exec -it netsim-csrx cli -c 'request services application-identification install'
+	@sleep 10
+	docker exec -it netsim-csrx cli -c 'request services application-identification install status'
+	docker exec -it netsim-csrx cli -c 'show services application-identification status'
+
 up: pki nets csrx
 	docker compose start syslog-sink
 	docker compose start web
+	@echo
+	@# The signature database lives in the container filesystem, so recreating
+	@# cSRX destroys it. Reinstall whenever a package is available; absence is
+	@# not fatal, it just means AppID reports UNKNOWN.
+	@SOFT_FAIL=0 ./csrx/install-signatures.sh || true
 	@echo
 	@echo "==> cSRX is up and ordered. Next: make config"
 

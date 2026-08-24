@@ -14,9 +14,14 @@ name: netsim-stage0
 
 networks:
   # Management. cSRX fxp0 lives here and sends syslog to the sink.
+  #
+  # MGMT_INTERNAL=false gives this bridge egress so cSRX can reach
+  # signatures.juniper.net to download the AppID database. ONLY this bridge —
+  # trust and untrust stay internal, so the simulated data plane still cannot
+  # reach the real internet and the lab's isolation guarantee holds.
   mgmt:
     driver: bridge
-    internal: true
+    internal: ${MGMT_INTERNAL:-true}
     ipam:
       config:
         - subnet: ${MGMT_PREFIX:-172.30.0}.0/24
