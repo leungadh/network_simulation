@@ -123,6 +123,11 @@ placeholders in `bootstrap.set` substituted at apply time), the worker IP
 allocator, and the certificate SANs. Moving the lab off a colliding subnet is
 a one-line change, and it can run alongside other labs on the same host.
 
+**TX checksum offload is disabled on every endpoint.** Required, not tuning —
+cSRX's userspace dataplane loses the `CHECKSUM_PARTIAL` marking, so offloaded
+checksums arrive unfinished and get dropped silently. See Troubleshooting. Any
+new service in Stage 2 must do the same in its entrypoint.
+
 **Structured-data syslog.** RT_FLOW then emits `key="value"` pairs instead of
 the positional format. Stage 1's Vector config depends on this.
 
@@ -223,6 +228,49 @@ docker network inspect netsim-stage0_trust \
 ```
 
 The gateway must not equal any `ipv4_address` in `docker-compose.yml`.
+
+**Connections time out with no response, but everything checks out.** This is
+the signature failure of this lab, and it looks like nothing is wrong:
+
+- cSRX pings both neighbours fine
+- interfaces, zones and policy all committed correctly
+- sessions ARE created and permitted (`show security flow session`)
+- but `In:` shows packets and `Out:` shows zero
+- `tcpdump` on the destination shows the SYN arriving
+- the destination is listening on the port
+- no RST, no log entry, nothing
+
+The cause is **TX checksum offload**. The sending kernel does not compute the
+TCP checksum — it writes a pseudo-header value and marks the buffer
+`CHECKSUM_PARTIAL` for hardware to finish. That metadata survives veth and
+bridges, which is why ordinary container-to-container traffic works and
+`tcpdump` routinely reports "incorrect" checksums on healthy hosts.
+
+It does **not** survive cSRX's dataplane, which reads raw frames in userspace
+and re-emits them. What arrives carries an unfinished checksum with no metadata
+saying so, and the receiving kernel drops it silently — before the socket, and
+after tcpdump has already captured it.
+
+Confirm it in a capture:
+
+```bash
+docker run --rm --net container:netsim-web nicolaka/netshoot \
+  tcpdump -i eth0 -n -e -vv -c 6 'tcp port 443'
+```
+
+`cksum 0x474e (incorrect -> 0xe9ef)` where the *first* value repeats across
+retransmits while the second changes is the fingerprint: an unfinished
+checksum, not corruption.
+
+The fix is applied automatically in both entrypoints:
+
+```bash
+ethtool -K eth0 tx off
+```
+
+Both endpoints need it — the workstation for requests, the web server for
+replies, since the return path crosses the same dataplane. Any service added in
+Stage 2 needs it too.
 
 **No flows at all.** Check syslog is leaving cSRX:
 

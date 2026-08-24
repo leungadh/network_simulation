@@ -94,23 +94,35 @@ probe-port:
 # Walk the data path hop by hop. Answers "where do packets stop?" without
 # depending on the workstation container being up.
 path-check:
-	@echo '--- 1. cSRX interfaces (want ge-0/0/0 and ge-0/0/1 up) ---'
-	@docker exec netsim-csrx cli -c 'show interfaces terse' 2>/dev/null | grep -E '^(ge-|fxp)' || true
+	@echo '--- 1. interfaces (stderr shown: cSRX omits some Junos commands) ---'
+	-@docker exec netsim-csrx cli -c 'show interfaces terse'
 	@echo
-	@echo '--- 2. cSRX routes ---'
-	@docker exec netsim-csrx cli -c 'show route' 2>/dev/null | head -20 || true
+	@echo '--- 2. configured interfaces ---'
+	-@docker exec netsim-csrx cli -c 'show configuration interfaces'
 	@echo
-	@echo '--- 3. cSRX -> web (does the firewall itself reach the server?) ---'
-	@docker exec netsim-csrx cli -c 'ping $(UNTRUST).10 count 3' 2>/dev/null || true
+	@echo '--- 3. zones and policy ---'
+	-@docker exec netsim-csrx cli -c 'show configuration security zones'
+	-@docker exec netsim-csrx cli -c 'show configuration security policies'
 	@echo
-	@echo '--- 4. web return route (must be via $(UNTRUST).1) ---'
-	@docker exec netsim-web ip route || true
+	@echo '--- 4. TRUST side: can cSRX reach the workstation? ---'
+	-@docker exec netsim-csrx cli -c 'ping $(TRUST).0.100 count 3 wait 2'
 	@echo
-	@echo '--- 5. did nginx see ANY request? ---'
-	@docker logs netsim-web 2>&1 | tail -15 || true
+	@echo '--- 5. UNTRUST side: can cSRX reach the web server? ---'
+	-@docker exec netsim-csrx cli -c 'ping $(UNTRUST).10 count 3 wait 2'
 	@echo
-	@echo '--- 6. sessions: look at bytes from server ---'
-	@docker exec netsim-csrx cli -c 'show security flow session' 2>/dev/null | head -30 || true
+	@echo '--- 6. did nginx see ANY request? ---'
+	-@docker logs netsim-web 2>&1 | tail -12
+	@echo
+	@echo '--- 7. sessions ---'
+	-@docker exec netsim-csrx cli -c 'show security flow session summary'
+
+# Watch the untrust side while traffic runs: does the SYN actually arrive at
+# the web server, and does it answer? Run in one terminal, `make traffic` in
+# another.
+tcpdump-web:
+	docker compose build web
+	docker compose up -d web
+	docker exec netsim-web tcpdump -i eth0 -n -c 40 'tcp port 443 or icmp'
 
 # First-hop reachability without depending on the workstation being up.
 ping-gw:

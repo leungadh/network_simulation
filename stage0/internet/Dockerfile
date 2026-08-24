@@ -2,7 +2,9 @@ FROM nginx:1.27-alpine
 
 # iproute2 is needed to install the return route via cSRX. Without it the
 # server receives requests from 10.10.x.x and has no idea how to reply.
-RUN apk add --no-cache iproute2
+# tcpdump: nginx's access_log only records COMPLETED requests, so it cannot
+# distinguish 'no packets arrived' from 'handshake never finished'.
+RUN apk add --no-cache iproute2 ethtool tcpdump
 
 COPY nginx.conf /etc/nginx/nginx.conf
 COPY entrypoint.sh /entrypoint.sh
