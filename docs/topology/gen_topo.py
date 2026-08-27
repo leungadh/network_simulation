@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
-Stage 1 topology diagram.
+Lab topology diagram — Stages 1 and 2.
 
 Reflects the lab as actually deployed: bridge names, subnets, the eth->Junos
-interface mapping, and where the two ground-truth files come from.
+interface mapping, and the telemetry spine that turns RT_FLOW syslog and the
+engine's intent log into one labelled table.
 
 Regenerate after an architecture change:
     python3 docs/topology/gen_topo.py
@@ -82,8 +83,8 @@ def header():
 
 # ---------------------------------------------------------------- title
 header()
-text(42, 52, "STAGE 1 — TOPOLOGY", INK, 25, "700", ls=2.2)
-text(43, 78, "netsim  ·  cSRX 26.2R1.7  ·  all bridges internal (no route to the real internet)",
+text(42, 52, "NETSIM — TOPOLOGY", INK, 25, "700", ls=2.2)
+text(43, 78, "stages 1–2  ·  cSRX 26.2R1.7  ·  the data path is sealed — no route to the real internet",
      MUTED, 12.5)
 
 # ---------------------------------------------------------------- host boundary
@@ -97,8 +98,8 @@ text(MX + 16, MY + 24, "MANAGEMENT", VIOLET, 11, "700", ls=1.8)
 text(MX + 16, MY + 42, "br-ns-mgmt   172.30.0.0/24   internal", DIM, 10.5)
 
 box(MX + 250, MY + 54, 232, 40, VIOLET, PANEL, rx=8, width=1.2)
-text(MX + 366, MY + 72, "netsim-syslog-sink", INK, 11.5, "600", anchor="middle")
-text(MX + 366, MY + 86, "172.30.0.20  ·  UDP/514", DIM, 10, anchor="middle")
+text(MX + 366, MY + 72, "netsim-vector", INK, 11.5, "600", anchor="middle")
+text(MX + 366, MY + 86, "172.30.0.20  ·  listens on UDP/514", DIM, 10, anchor="middle")
 
 text(MX + 16, MY + 78, "bridge gw .254", DIM, 9.5)
 text(MX + 16, MY + 92, "(unused — internal)", DIM, 9.5)
@@ -187,47 +188,61 @@ arrow(FX + FW / 2, FY, FX + FW / 2, MY + MH + 4, VIOLET, dash="5 4", width=1.8)
 text(FX + FW / 2 + 10, (MY + MH + FY) / 2 - 2, "RT_FLOW syslog", VIOLET, 10)
 text(FX + FW / 2 + 10, (MY + MH + FY) / 2 + 12, "structured-data", DIM, 9)
 
-# ---------------------------------------------------------------- outputs
+# ---------------------------------------------------------------- telemetry
 box(66, OY, W - 132, 168, EDGE, PANEL, rx=10, width=1.4)
-text(86, OY + 26, "GROUND TRUTH", INK, 11.5, "700", ls=1.8)
-text(86, OY + 44, "what makes this a labelled dataset rather than a traffic generator", DIM, 10)
+text(86, OY + 26, "TELEMETRY SPINE", INK, 11.5, "700", ls=1.8)
+text(86, OY + 44, "br-ns-tlm  ·  172.32.0.0/24", DIM, 10)
+text(1274, OY + 44, "the labelled dataset every later stage reads", DIM, 10, anchor="end")
 
-box(86, OY + 58, 380, 94, TRUST, "#0e1428", rx=8, width=1.2)
-text(102, OY + 80, "out/intents.jsonl", TRUST, 11.5, "600")
-text(102, OY + 98, "written by the engine — what each worker", MUTED, 9.5)
-text(102, OY + 112, "meant to do", MUTED, 9.5)
-text(102, OY + 132, "worker · persona · activity · label · src_port", DIM, 9.5)
+# what the worker meant to do
+box(86, OY + 58, 230, 94, TRUST, "#0e1428", rx=8, width=1.2)
+text(102, OY + 80, "out/intents.jsonl", TRUST, 11, "600")
+text(102, OY + 98, "written by the engine —", MUTED, 9.5)
+text(102, OY + 112, "what each worker meant to do", MUTED, 9.5)
+text(102, OY + 132, "worker · persona · activity · label", DIM, 9)
 
-box(894, OY + 58, 380, 94, VIOLET, "#0e1428", rx=8, width=1.2)
-text(910, OY + 80, "out/flows.csv", VIOLET, 11.5, "600")
-text(910, OY + 98, "parsed from cSRX RT_FLOW — what the", MUTED, 9.5)
-text(910, OY + 112, "firewall actually saw", MUTED, 9.5)
-text(910, OY + 132, "5-tuple · bytes · packets · application · policy", DIM, 9.5)
+# ingest
+box(376, OY + 58, 190, 94, VIOLET, "#0e1428", rx=8, width=1.2)
+text(471, OY + 80, "netsim-vector", VIOLET, 11, "600", anchor="middle")
+text(471, OY + 98, "172.32.0.20 — same container", MUTED, 9, anchor="middle")
+text(471, OY + 114, "VRL parse  ·  raw archive", DIM, 9, anchor="middle")
+text(471, OY + 133, "kept apart from the parser", DIM, 9, anchor="middle")
 
-box(500, OY + 58, 360, 94, AMBER, "#0e1428", rx=8, width=1.2)
-text(680, OY + 80, "JOIN", AMBER, 11.5, "700", anchor="middle", ls=1.4)
-text(680, OY + 100, "(src_ip, src_port) within 5s", INK, 10.5, anchor="middle")
-text(680, OY + 118, "no NAT + no keep-alive keep this", DIM, 9.5, anchor="middle")
-text(680, OY + 132, "1:1 and unambiguous", DIM, 9.5, anchor="middle")
+# store, and the join
+box(626, OY + 58, 330, 94, AMBER, "#0e1428", rx=8, width=1.2)
+text(791, OY + 80, "netsim-clickhouse", AMBER, 11, "600", anchor="middle")
+text(791, OY + 98, "flows  ·  intents", MUTED, 9.5, anchor="middle")
+text(791, OY + 117, "netsim.labelled_flows", INK, 10.5, "600", anchor="middle")
+text(791, OY + 134, "ASOF join on (src_ip, src_port) within 5s", DIM, 9, anchor="middle")
 
-# drawn here, after the ground-truth panel, so the panel does not cover it
-add(f'<path d="M 890 {MY + MH} L 890 646 L 1084 646 L 1084 {OY + 58}" fill="none" '
+# read
+box(1016, OY + 58, 258, 94, GREEN, "#0e1428", rx=8, width=1.2)
+text(1145, OY + 80, "netsim-grafana", GREEN, 11, "600", anchor="middle")
+text(1145, OY + 98, "localhost:3000", MUTED, 9.5, anchor="middle")
+text(1145, OY + 117, "join rate · classified · top talkers", DIM, 9, anchor="middle")
+text(1145, OY + 134, "activity mix — only the join gives this", DIM, 9, anchor="middle")
+
+# drawn here, after the panel, so the panel does not cover it
+add(f'<path d="M 890 {MY + MH} L 890 598 L 471 598 L 471 {OY + 58}" fill="none" '
     f'stroke="{VIOLET}" stroke-width="1.8" stroke-dasharray="5 4" '
     f'marker-end="url(#a-{VIOLET[1:]})"/>')
+text(700, 613, "one container on both bridges — receives on mgmt, writes on telemetry",
+     DIM, 8.5, anchor="middle")
 
-arrow(466, OY + 105, 500, OY + 105, TRUST, width=2)
-arrow(894, OY + 105, 860, OY + 105, VIOLET, width=2)
+arrow(316, OY + 105, 376, OY + 105, TRUST, width=2)
+arrow(566, OY + 105, 626, OY + 105, VIOLET, width=2)
+arrow(956, OY + 105, 1016, OY + 105, AMBER, width=2)
 
 arrow(TX + 100, TY + TH, 180, OY, TRUST, dash="5 4", width=1.8)
 
 # ---------------------------------------------------------------- footer
-text(42, 836, "VERIFIED BY  make verify", INK, 10.5, "700", ls=1.4)
+text(42, 836, "MEASURED  30-minute run", INK, 10.5, "700", ls=1.4)
 checks = [
-    "flow events received",
-    "session_close received",
-    "≥3 distinct source IPs",
-    "AppSecure classified",
-    "join rate ≥ 98%",
+    "2070 flows / 2070 intents",
+    "join rate 100%",
+    "AppID classified 100%",
+    "source-port capture 100%",
+    "3 workers, 3 source IPs",
 ]
 cx = 250
 for c in checks:

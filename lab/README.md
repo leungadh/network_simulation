@@ -9,7 +9,7 @@ Proves the whole path end to end at minimum width:
 ```
 
 <p align="center">
-  <img src="../docs/topology/topology.svg" alt="Stage 1 topology" width="100%">
+  <img src="../docs/topology/topology.svg" alt="netsim topology" width="100%">
 </p>
 
 Nothing here is meant to be realistic. The only question Stage 1 answers is

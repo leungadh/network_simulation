@@ -1,5 +1,9 @@
 # Stage 1 — Walking Skeleton
 
+> **Superseded by [`Stage1_and_2.md`](Stage1_and_2.md)**, which covers this
+> stage together with the telemetry spine that replaced its CSV output.
+> Kept for the record; the combined document is the one to read.
+
 **Status:** Complete — all exit criteria met
 **Date:** 27 August 2026
 **Code:** [`lab/`](../lab/) · **Plan:** [`architecture_and_staging_plan.md`](architecture_and_staging_plan.md) §6

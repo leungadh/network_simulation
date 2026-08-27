@@ -66,7 +66,7 @@ corrupted the labelled dataset rather than failing loudly:
 - **Docker interface ordering** is not deterministic when several networks are
   attached at container creation, and cSRX maps `eth0/1/2` positionally.
 
-Milestone write-up: [`docs/Stage_2.md`](docs/Stage_2.md) — architecture,
+Milestone write-up: [`docs/Stage1_and_2.md`](docs/Stage1_and_2.md) — architecture,
 topology, defects fixed, and measured results.
 
 ### Stage 2 results
@@ -100,7 +100,7 @@ locally before shipping:
   numeric comparison in the verifier raised `TypeError`.
 
 Full design: [`docs/architecture_and_staging_plan.md`](docs/architecture_and_staging_plan.md)
-Stage 1 topology: [`docs/topology/topology.svg`](docs/topology/topology.svg)
+Topology: [`docs/topology/topology.svg`](docs/topology/topology.svg)
 
 ## Requirements
 
@@ -127,9 +127,9 @@ make run                    # pki -> up -> config -> traffic -> verify
 
 ```
 docs/           architecture and staging plan
-docs/Stage_2.md milestone write-up for the completed walking skeleton
+docs/Stage1_and_2.md  milestone write-up — skeleton + telemetry spine
 docs/banner/    banner source + generator
-docs/topology/  Stage 1 topology diagram + generator
+docs/topology/  topology diagram + generator
 lab/         walking skeleton (see lab/README.md)
 ```
 
