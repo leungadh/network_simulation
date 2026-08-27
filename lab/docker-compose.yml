@@ -139,11 +139,13 @@ services:
     ulimits:
       nofile: { soft: 262144, hard: 262144 }
     healthcheck:
-      # Test BOTH interfaces. Vector and verify_sql.py use HTTP on 8123;
-      # Grafana uses the native protocol on 9000. Checking only one lets a
-      # partial start report healthy while the path we depend on is dead.
-      test: ["CMD-SHELL",
-             "wget -qO- http://localhost:8123/ping >/dev/null 2>&1 && clickhouse-client --user \"$$CLICKHOUSE_USER\" --password \"$$CLICKHOUSE_PASSWORD\" --query 'SELECT 1' >/dev/null 2>&1"]
+      # /ping on the HTTP interface: unauthenticated by design, and it is the
+      # exact path Vector and verify_sql.py use. An earlier version also ran
+      # clickhouse-client with credentials from the environment, which failed
+      # whenever the container predated those variables — the probe reported a
+      # healthy server as broken. Test the one thing that matters, without
+      # depending on configuration.
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8123/ping >/dev/null 2>&1"]
       interval: 5s
       timeout: 5s
       retries: 24

@@ -380,8 +380,21 @@ Either way the database lives in the container filesystem, so `make down`
 destroys it. `make up` reinstalls automatically when a package is present in
 `csrx/signatures/`; after an online download you must repeat it.
 
-**ClickHouse stuck in `starting`, or nothing listening on 8123.** Look in the
-server's own log — it writes to a file, so `docker logs` shows almost nothing:
+**ClickHouse stuck in `starting`/`unhealthy`.** First ask the probe why, rather
+than guessing:
+
+```bash
+docker inspect netsim-clickhouse --format '{{json .State.Health.Log}}' \
+  | python3 -m json.tool | tail -25
+curl -sS -m 5 http://127.0.0.1:8123/ping     # "Ok." means the server is fine
+```
+
+If `/ping` answers but the container reads unhealthy, the probe is at fault, not
+the server.
+
+**ClickHouse errors.** Look in the server's own log. It writes to a file
+**inside the container** — `docker logs` shows only the entrypoint's lines, and
+nothing appears in `/var/log` on the host:
 
 ```bash
 docker exec netsim-clickhouse tail -40 \
