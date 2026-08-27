@@ -224,6 +224,43 @@ parsing, so a VRL bug cannot lose source data.
 
 ---
 
+## The dashboard
+
+```
+http://localhost:3000
+```
+
+Anonymous viewer access is enabled, so no login is needed to look. To edit,
+sign in with `GRAFANA_USER` / `GRAFANA_PASSWORD` from `.env` (`admin`/`admin`
+by default).
+
+The dashboard is **NetSim — Stage 2 telemetry**, in the `NetSim` folder. Pick a
+run from the **Run** dropdown at the top — every panel is scoped to one
+`run_id`, because mixing runs makes every number meaningless.
+
+| Panel | Reads |
+|---|---|
+| Join rate | the number the whole dataset rests on; red below 90, amber below 98 |
+| Classified | share AppID could name; 0% usually means no signature database |
+| Sessions / Traffic | volume for the run |
+| Sessions per minute | rate over time |
+| Bytes by application | AppID classification over time |
+| Top talkers | per-worker volume, named rather than bare IPs |
+| Activity mix | what workers were doing — only possible because of the join |
+
+Empty panels with a healthy stack almost always mean **no data for the selected
+run**, not a broken dashboard. Check with:
+
+```bash
+make runs        # per-run summary straight from ClickHouse
+```
+
+The dashboard is generated, not hand-built — edit
+`telemetry/grafana/make_dashboard.py` and run `make dashboard` to regenerate and
+reload. UI edits are allowed but are not the source of truth.
+
+---
+
 ## Which changes need what
 
 Not everything needs a restart, and the only genuinely destructive command is

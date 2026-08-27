@@ -36,7 +36,8 @@ help:
 	@echo "  make traffic      run the workers and follow them"
 	@echo "  make verify       check the exit criteria (from ClickHouse)"
 	@echo "  make runs         per-run health summary"
-	@echo "  make dashboard    regenerate and reload the Grafana dashboard"
+	@echo "  make dashboard      regenerate and reload the Grafana dashboard"
+	@echo "  make dashboard-open open it in a browser"
 	@echo "  make sql Q=...    ad-hoc ClickHouse query"
 	@echo "  make status       what is running, and is the AppID database intact"
 	@echo "  make down         stop and remove everything (DESTROYS the AppID database)"
@@ -110,6 +111,7 @@ signatures-online:
 up: pki nets csrx
 	docker compose up -d clickhouse
 	docker compose up -d vector
+	docker compose up -d grafana
 	docker compose start web
 	@echo
 	@# The signature database lives in the container filesystem, so recreating
@@ -118,6 +120,7 @@ up: pki nets csrx
 	@SOFT_FAIL=0 ./csrx/install-signatures.sh || true
 	@echo
 	@echo "==> cSRX is up and ordered. Next: make config"
+	@echo "    Grafana: http://localhost:$(GF_PORT)  (anonymous viewer access)"
 
 config:
 	@./csrx/apply-config.sh
@@ -147,6 +150,11 @@ verify:
 #   docker compose --profile legacy up -d syslog-sink
 verify-csv:
 	@RUN_ID=$$(cat out/current_run_id 2>/dev/null) python3 verify.py
+
+# Open the dashboard (or just browse to http://localhost:$(GF_PORT)).
+dashboard-open:
+	@echo "==> http://localhost:$(GF_PORT)/d/netsim-stage2"
+	-@xdg-open "http://localhost:$(GF_PORT)/d/netsim-stage2" >/dev/null 2>&1 || true
 
 # Regenerate the Grafana dashboard from its generator, then reload it.
 dashboard:
