@@ -66,16 +66,42 @@ if [ -n "${TARGET_HOST}" ] && [ -n "${TARGET_IP}" ]; then
 fi
 
 echo "==> connectivity check through the firewall"
-# Deliberately NOT bound to a worker address: this check is infrastructure,
-# and a session from a worker IP with no matching intent would show up as an
-# unjoinable flow and drag down the Stage 1 join rate.
-if curl -sS --max-time 10 --cacert /pki/ca.crt \
-        "https://${TARGET_HOST}/" -o /dev/null -w '    HTTP %{http_code} in %{time_total}s\n'; then
-    echo "    path is up"
-else
-    echo "!! could not reach ${TARGET_HOST} through cSRX." >&2
-    echo "   Check interface ordering (eth1 should be ${GATEWAY}) and that" >&2
-    echo "   the bootstrap config was applied." >&2
+#
+# Retry, then FAIL. cSRX's dataplane needs a few seconds to settle after a
+# restart — a check here has been seen to take 7s that normally takes
+# milliseconds. Worse, the old version printed a warning and carried on, so a
+# genuinely broken path produced a full DURATION_S of failed requests that
+# looked like three separate exit-criteria failures instead of one dead path.
+ATTEMPTS="${CONNECT_ATTEMPTS:-10}"
+ok=0
+i=1
+while [ "${i}" -le "${ATTEMPTS}" ]; do
+    code="$(curl -sS --max-time 10 --cacert /pki/ca.crt \
+        "https://${TARGET_HOST}/" -o /dev/null -w '%{http_code}' 2>/dev/null || echo 000)"
+    if [ "${code}" = "200" ]; then
+        echo "    HTTP 200 on attempt ${i} — path is up"
+        ok=1
+        break
+    fi
+    echo "    attempt ${i}/${ATTEMPTS}: HTTP ${code}"
+    i=$(( i + 1 ))
+    sleep 3
+done
+
+if [ "${ok}" -ne 1 ]; then
+    echo >&2
+    echo "!! No path to ${TARGET_HOST} through cSRX after ${ATTEMPTS} attempts." >&2
+    echo "   Refusing to generate traffic that cannot succeed." >&2
+    echo >&2
+    echo "   Most likely cSRX has no configuration — it loses the entire Junos" >&2
+    echo "   config whenever the container is recreated:" >&2
+    echo "     make config" >&2
+    echo >&2
+    echo "   Then check in order:" >&2
+    echo "     docker exec netsim-csrx cli -c 'show configuration security policies'" >&2
+    echo "     docker exec netsim-csrx cli -c 'show security flow session'" >&2
+    echo "     docker logs netsim-web | tail" >&2
+    exit 1
 fi
 
 exec "$@"

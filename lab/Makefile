@@ -120,8 +120,15 @@ up: pki nets csrx
 	@# not fatal, it just means AppID reports UNKNOWN.
 	@SOFT_FAIL=0 ./csrx/install-signatures.sh || true
 	@echo
-	@echo "==> cSRX is up and ordered. Next: make config"
-	@echo "    Grafana: http://localhost:$(GF_PORT)  (anonymous viewer access)"
+	@# cSRX loses its ENTIRE Junos configuration whenever the container is
+	@# recreated, and up recreates it. Leaving this to the operator produced a
+	@# full traffic run of failed requests more than once, presenting as three
+	@# unrelated exit-criteria failures. Configure it here.
+	@./csrx/apply-config.sh
+	@echo
+	@echo "==> lab is up and configured."
+	@echo "    Grafana:  http://localhost:$(GF_PORT)  (anonymous viewer access)"
+	@echo "    Next:     make traffic && make verify"
 
 config:
 	@./csrx/apply-config.sh

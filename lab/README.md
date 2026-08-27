@@ -50,8 +50,7 @@ Or step by step:
 ```bash
 make pki          # lab CA + server cert (once)
 make check-order  # prove docker honours interface connect order (~10s)
-make up           # networks, syslog sink, cSRX (ordered), web
-make config       # push the Junos bootstrap config
+make up           # networks, telemetry, cSRX (ordered + configured), web
 make traffic      # run the workers and follow them
 make verify       # check the exit criteria
 ```
@@ -258,6 +257,22 @@ make runs        # per-run summary straight from ClickHouse
 The dashboard is generated, not hand-built — edit
 `telemetry/grafana/make_dashboard.py` and run `make dashboard` to regenerate and
 reload. UI edits are allowed but are not the source of truth.
+
+---
+
+## cSRX loses its config on every recreate
+
+`make down`, `docker rm`, or anything that recreates the container wipes the
+**entire** Junos configuration. `make up` therefore pushes it automatically —
+it used to leave that to you, and forgetting produced a full traffic run of
+failed requests that surfaced as three unrelated exit-criteria failures rather
+than one dead path.
+
+`make config` still exists for re-pushing after editing `bootstrap.set`.
+
+The workstation now refuses to generate traffic it knows cannot succeed: its
+startup check retries the path through cSRX up to ten times and exits non-zero
+if none succeed, naming `make config` as the first thing to try.
 
 ---
 
