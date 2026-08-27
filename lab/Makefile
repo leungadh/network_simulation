@@ -39,6 +39,7 @@ help:
 	@echo "  make dashboard      regenerate and reload the Grafana dashboard"
 	@echo "  make dashboard-open open it in a browser"
 	@echo "  make sql Q=...    ad-hoc ClickHouse query"
+	@echo "  make vector-check compile-check vector.yaml without starting anything"
 	@echo "  make status       what is running, and is the AppID database intact"
 	@echo "  make down         stop and remove everything (DESTROYS the AppID database)"
 	@echo "  make reset        down + wipe outputs (keeps PKI)"
@@ -177,6 +178,20 @@ runs:
 	@curl -sS "http://127.0.0.1:8123/" \
 		-H "X-ClickHouse-User: $(CH_USER)" -H "X-ClickHouse-Key: $(CH_PASS)" \
 		--data-binary "SELECT * FROM netsim.run_summary FORMAT PrettyCompact"
+
+# Compile-check the Vector config WITHOUT touching the running stack.
+#
+# A VRL syntax error is fatal to the entire config, not just the offending
+# transform — one bad expression in the RT_FLOW parser also killed the intents
+# pipeline, which has nothing to do with cSRX. Both sources went to zero and
+# the container exited 78. Run this after any edit to vector.yaml.
+vector-check:
+	@docker run --rm \
+		-v "$$(pwd)/telemetry/vector/vector.yaml:/etc/vector/vector.yaml:ro" \
+		-e RUN_ID=check -e CLICKHOUSE_USER=$(CH_USER) -e CLICKHOUSE_PASSWORD=$(CH_PASS) \
+		timberio/vector:0.41.1-alpine \
+		validate --no-environment --config /etc/vector/vector.yaml \
+		&& echo "==> vector config OK"
 
 # Diagnose source-port capture, the join key the labelled dataset rests on.
 probe-port:

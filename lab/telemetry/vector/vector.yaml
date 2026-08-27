@@ -32,6 +32,15 @@ sources:
       strategy: device_and_inode
 
 transforms:
+  # VRL notes, learned the hard way:
+  #   * `else if` must sit on the SAME line as the closing brace. A leading
+  #     `else` is a syntax error, and any syntax error kills the WHOLE config —
+  #     taking down unrelated pipelines with it.
+  #   * `to_timestamp` does not exist. It is `parse_timestamp(value, format)`.
+  #   * Avoided here on purpose: for_each closures mutating an outer map, and
+  #     chained else-if. parse_key_value and a lookup map do the same work with
+  #     far less that can go wrong.
+  # Compile-check before starting anything:  make vector-check
   parse_flows:
     type: remap
     inputs: [csrx_syslog]
@@ -40,28 +49,27 @@ transforms:
     source: |
       raw = string!(.message)
 
-      if contains(raw, "RT_FLOW_SESSION_CLOSE") {
-        .event_type = "session_close"
-      } else if contains(raw, "RT_FLOW_SESSION_CREATE") {
-        .event_type = "session_create"
-      } else {
-        abort
-      }
+      # No else-if: two independent tests, then a guard.
+      .event_type = ""
+      if contains(raw, "RT_FLOW_SESSION_CLOSE") { .event_type = "session_close" }
+      if contains(raw, "RT_FLOW_SESSION_CREATE") { .event_type = "session_create" }
+      if .event_type == "" { abort }
 
-      # Prefer the firewall's own timestamp. The join window is 5s, and
+      # Prefer the firewall's own timestamp; the join window is only 5s and
       # receive-time jitter eats into it.
-      hdr = parse_regex(raw, r'^<\d+>\d\s+(?P<t>\S+)') ?? {}
       stamp = now()
+      hdr = parse_regex(raw, r'^<\d+>\d\s+(?P<t>\S+)') ?? {}
       if exists(hdr.t) {
-        stamp = to_timestamp(string!(hdr.t)) ?? now()
+        stamp = parse_timestamp(string!(hdr.t), "%+") ?? now()
       }
       .ts = format_timestamp!(stamp, "%Y-%m-%d %H:%M:%S%.3f")
 
-      # RT_FLOW structured-data is a flat list of key="value" pairs.
-      pairs = parse_regex_all(raw, r'(?P<k>[A-Za-z0-9\-_]+)="(?P<v>[^"]*)"') ?? []
+      # RT_FLOW structured-data is key="value" pairs inside [junos@... ].
+      # parse_key_value understands the quoting, so no manual regex loop.
       kv = {}
-      for_each(pairs) -> |_i, m| {
-        kv = set!(kv, [string!(m.k)], string!(m.v))
+      sd = parse_regex(raw, r'\[junos@\S+\s+(?P<body>.+)\]') ?? {}
+      if exists(sd.body) {
+        kv = parse_key_value(string!(sd.body), key_value_delimiter: "=", field_delimiter: " ") ?? {}
       }
 
       .run_id       = "${RUN_ID:-unknown}"
@@ -70,28 +78,28 @@ transforms:
       .src_port     = to_int(get(kv, ["source-port"])      ?? "0") ?? 0
       .dst_port     = to_int(get(kv, ["destination-port"]) ?? "0") ?? 0
 
+      # Lookup map instead of an if/else chain.
+      protos = {"1": "ICMP", "6": "TCP", "17": "UDP", "47": "GRE", "50": "ESP"}
       proto = get(kv, ["protocol-id"]) ?? ""
-      .protocol = if proto == "6"  { "TCP" }
-             else if proto == "17" { "UDP" }
-             else if proto == "1"  { "ICMP" }
-             else { proto }
+      .protocol = get(protos, [proto]) ?? proto
 
-      .application  = get(kv, ["application"])             ?? ""
-      .nested_app   = get(kv, ["nested-application"])      ?? ""
-      .policy_name  = get(kv, ["policy-name"])             ?? ""
-      .src_zone     = get(kv, ["source-zone-name"])        ?? ""
-      .dst_zone     = get(kv, ["destination-zone-name"])   ?? ""
-      .reason       = get(kv, ["reason"])                  ?? ""
+      .application  = get(kv, ["application"])           ?? ""
+      .nested_app   = get(kv, ["nested-application"])    ?? ""
+      .policy_name  = get(kv, ["policy-name"])           ?? ""
+      .src_zone     = get(kv, ["source-zone-name"])      ?? ""
+      .dst_zone     = get(kv, ["destination-zone-name"]) ?? ""
+      .reason       = get(kv, ["reason"])                ?? ""
 
       .bytes_in     = to_int(get(kv, ["bytes-from-client"])   ?? "0") ?? 0
       .bytes_out    = to_int(get(kv, ["bytes-from-server"])   ?? "0") ?? 0
       .packets_in   = to_int(get(kv, ["packets-from-client"]) ?? "0") ?? 0
       .packets_out  = to_int(get(kv, ["packets-from-server"]) ?? "0") ?? 0
 
-      # RT_FLOW reports elapsed time in seconds; the schema stores milliseconds.
+      # RT_FLOW reports elapsed time in seconds; the schema stores ms.
       .duration_ms  = (to_int(get(kv, ["elapsed-time"]) ?? "0") ?? 0) * 1000
 
-      sid = get(kv, ["session-id-32"]) ?? (get(kv, ["session-id"]) ?? "0")
+      sid = get(kv, ["session-id-32"]) ?? ""
+      if sid == "" { sid = get(kv, ["session-id"]) ?? "0" }
       .session_id   = to_int(sid) ?? 0
 
       .nat_src_ip   = get(kv, ["nat-source-address"]) ?? "0.0.0.0"
@@ -111,10 +119,10 @@ transforms:
     source: |
       obj = parse_json!(string!(.message))
 
-      .run_id           = string(obj.run_id)   ?? "unknown"
+      .run_id           = string(obj.run_id) ?? "unknown"
       .schema_version   = to_int(obj.schema_version) ?? 1
 
-      stamp = to_timestamp(string!(obj.ts)) ?? now()
+      stamp = parse_timestamp(string!(obj.ts), "%+") ?? now()
       .ts = format_timestamp!(stamp, "%Y-%m-%d %H:%M:%S%.3f")
 
       .worker_id        = to_int(obj.worker_id) ?? 0
@@ -132,7 +140,10 @@ transforms:
       .bytes_intended   = to_int(obj.bytes_intended) ?? 0
       .bytes_received   = to_int(obj.bytes_received) ?? 0
       .duration_ms      = to_int(obj.duration_ms) ?? 0
-      .ok               = if (obj.ok == true) { 1 } else { 0 }
+
+      .ok = 0
+      if obj.ok == true { .ok = 1 }
+
       .error            = string(obj.error) ?? ""
 
       del(.message)

@@ -464,6 +464,31 @@ interface Vector and `verify_sql.py` need is unusable — the check therefore
 tests **both** interfaces, because verifying one and inferring the other is how
 this stayed hidden.
 
+**Nothing ingested — both flows AND intents at zero.** That combination means
+Vector, not cSRX: intents come from tailing a file and never touch the firewall,
+so if both are empty the ingester is down.
+
+```bash
+docker ps -a --filter name=netsim-vector --format '{{.Names}} {{.Status}}'
+docker logs netsim-vector 2>&1 | tail -50
+```
+
+`Exited (78)` is a configuration error. **A VRL syntax error is fatal to the
+whole config**, not just the transform containing it, which is why one bad
+expression in the RT_FLOW parser also killed the unrelated intents pipeline.
+
+Compile-check before starting anything:
+
+```bash
+make vector-check
+```
+
+VRL traps hit here:
+
+- `else if` must be on the **same line** as the closing brace; a leading `else`
+  is a syntax error
+- `to_timestamp` does not exist — it is `parse_timestamp(value, format)`
+
 **No flows at all.** Check syslog is leaving cSRX:
 
 ```bash
