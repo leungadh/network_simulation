@@ -32,7 +32,8 @@ help:
 	@echo "  make config       push the Junos bootstrap config"
 	@echo "  make traffic      run the workers and follow them"
 	@echo "  make verify       check the Stage 0 exit criteria"
-	@echo "  make down         stop and remove everything"
+	@echo "  make status       what is running, and is the AppID database intact"
+	@echo "  make down         stop and remove everything (DESTROYS the AppID database)"
 	@echo "  make reset        down + wipe outputs (keeps PKI)"
 	@echo
 	@echo "  trust=$(TRUST).0.0/16  mgmt=$(MGMT).0/24  untrust=$(UNTRUST).0/24"
@@ -178,6 +179,28 @@ ping-gw:
 
 
 run: up config traffic verify
+
+# What is actually running, and is the AppID database still there? Run this
+# first when picking the lab up after a break or a reboot.
+status:
+	@echo '--- containers ---'
+	@docker ps -a --filter name=netsim --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}'
+	@echo
+	@echo '--- networks ---'
+	@docker network ls --filter name=$(PROJECT) --format '  {{.Name}}'
+	@echo
+	@echo '--- cSRX dataplane ---'
+	@docker exec netsim-csrx pgrep srxpfe >/dev/null 2>&1 \
+		&& echo '  srxpfe running' || echo '  srxpfe NOT running'
+	@echo
+	@echo '--- AppID signature database (destroyed by make down) ---'
+	-@docker exec netsim-csrx cli -c 'show services application-identification status' 2>/dev/null \
+		| grep -E 'Application package version|Release date' | sed 's/^/  /'
+	@echo
+	@echo '--- last run ---'
+	@echo "  run_id: $$(cat out/current_run_id 2>/dev/null || echo '(none)')"
+	@echo "  intents: $$(wc -l < out/intents.jsonl 2>/dev/null || echo 0) lines"
+	@echo "  flows:   $$(wc -l < out/flows.csv 2>/dev/null || echo 0) lines"
 
 logs:
 	docker compose logs -f

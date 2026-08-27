@@ -181,6 +181,39 @@ takeover. It then separately confirms `tap0` carries the trust address and
 
 ---
 
+## Which changes need what
+
+Not everything needs a restart, and the only genuinely destructive command is
+`make down`.
+
+| What changed | What to run | Why |
+|---|---|---|
+| `verify.py` | `make verify` | runs on the host |
+| `Makefile` | nothing | runs on the host |
+| `csrx/bootstrap.set` | `make config` | re-push the Junos config |
+| `*/entrypoint.sh`, `*/Dockerfile` | `make up` | rebuilds the image |
+| `workstation/engine/*.py` | `make up && make traffic` | code is baked into the image |
+| a compose *service* | `make up` | compose recreates just that service |
+| a compose *network*, or `.env` addressing / `MGMT_EGRESS` | `make down && make up` | docker will not alter an existing network in place |
+
+**`make down` destroys the AppID signature database.** It lives in the cSRX
+container filesystem, and `down` removes the container. `make up` reinstalls
+automatically if a package is present in `csrx/signatures/`; after an online
+download you must repeat `make signatures-online`. Avoid `down` unless you are
+actually changing networking.
+
+Picking the lab up after a break or a reboot:
+
+```bash
+make status     # what survived, and is the signature database intact
+```
+
+A reboot stops containers but does not remove them, so `docker compose start`
+plus `docker start netsim-csrx` brings everything back with the signature
+database intact.
+
+---
+
 ## Troubleshooting
 
 **`pull access denied for csrx`.** The tag in `.env` does not match the image

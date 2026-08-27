@@ -112,7 +112,21 @@ def main():
             return 1
 
     closes = [f for f in flows if f["event_type"] == "session_close"]
-    print(f"\n  {len(flows)} flow events ({len(closes)} closes), {len(intents)} intents\n")
+
+    # Infrastructure traffic (startup health checks, management probes) has no
+    # intent by definition. Separate it once, here, so every check below scores
+    # the same population — applying this in one check and not another is how
+    # the "flow IPs match intent IPs" line used to fail spuriously.
+    worker_ips = {i["src_ip"] for i in intents}
+    infra = [f for f in closes if f["src_ip"] not in worker_ips]
+    closes = [f for f in closes if f["src_ip"] in worker_ips]
+
+    print(f"\n  {len(flows)} flow events ({len(closes)} worker closes), {len(intents)} intents")
+    if infra:
+        breakdown = ", ".join(f"{ip} x{n}"
+                              for ip, n in Counter(f["src_ip"] for f in infra).items())
+        print(f"  {len(infra)} non-worker flow(s) excluded: {breakdown}")
+    print()
 
     # 1 — data present
     check("flow events received", len(flows) > 0)
@@ -127,7 +141,9 @@ def main():
     check("distinct source IPs in flows", len(flow_ips) >= 3,
           "\n".join(f"{ip}: {n} sessions" for ip, n in sorted(flow_ips.items())))
     check("flow IPs match intent IPs", set(flow_ips) == set(intent_ips),
-          f"flows:   {sorted(flow_ips)}\nintents: {sorted(intent_ips)}"
+          f"flows:   {sorted(flow_ips)}\nintents: {sorted(intent_ips)}\n"
+          "A worker that appears in one but not the other means either an\n"
+          "intent produced no session, or a session had no intent."
           if set(flow_ips) != set(intent_ips) else "")
 
     # 3 — AppID
@@ -136,8 +152,14 @@ def main():
     classified = sum(apps.values()) - unknown
     check("AppSecure classified traffic", classified > 0,
           "\n".join(f"{a}: {n}" for a, n in apps.most_common(10)) or
-          "No application field populated. Check the AppSecure licence and\n"
-          "`set services application-identification`.")
+          "Every session UNKNOWN. Check the signature database is installed —\n"
+          "cSRX ships without one and AppID then has nothing to match:\n"
+          "  docker exec netsim-csrx cli -c \\\n"
+          "    'show services application-identification status'\n"
+          "'Application package version 0' means no database. Install with\n"
+          "`make signatures` (offline) or `make signatures-online`.\n"
+          "Note sessions already open when the package installed are NOT\n"
+          "reclassified — run fresh traffic afterwards.")
 
     # 4 — source port capture.
     # Only requests that actually established a connection can have a source
@@ -161,17 +183,6 @@ def main():
     for i in intents:
         if i.get("src_port"):
             index.setdefault((i["src_ip"], int(i["src_port"])), []).append(i)
-
-    # Flows from addresses the engine never used are infrastructure (startup
-    # health checks, management probes). They have no intent by definition, so
-    # scoring them would measure the wrong thing. Reported, not silently dropped.
-    worker_ips = {i["src_ip"] for i in intents}
-    infra = [f for f in closes if f["src_ip"] not in worker_ips]
-    if infra:
-        from collections import Counter as _C
-        breakdown = ", ".join(f"{ip} x{n}" for ip, n in _C(f["src_ip"] for f in infra).items())
-        print(f"  ({len(infra)} non-worker flow(s) excluded from the join: {breakdown})")
-    closes = [f for f in closes if f["src_ip"] in worker_ips]
 
     matched = 0
     port_only = 0
