@@ -70,22 +70,112 @@ networks:
 # it on management alone and connects the data networks one at a time, then
 # verifies the mapping. See "Interface ordering" in README.md.
 
+  # Telemetry plane: ClickHouse, Vector, Grafana.
+  #
+  # NOT internal, deliberately. Grafana installs its ClickHouse datasource
+  # plugin on first start, and published ports do not work on an internal
+  # network. This is infrastructure, not the simulated data plane — trust and
+  # untrust stay sealed, so the simulation still cannot reach or leak to the
+  # real internet.
+  telemetry:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${TELEMETRY_PREFIX:-172.32.0}.0/24
+          gateway: ${TELEMETRY_PREFIX:-172.32.0}.254
+    driver_opts:
+      com.docker.network.bridge.name: br-ns-tlm
+
 services:
 
   # ---------------------------------------------------------------
   # Syslog sink. Receives RT_FLOW from cSRX, writes raw + parsed CSV.
   # Stage 1 replaces this with Vector -> ClickHouse.
   # ---------------------------------------------------------------
+  # Stage 0's Python sink. Superseded by Vector, kept behind a profile because
+  # it is a useful fallback when debugging a VRL change:
+  #     docker compose --profile legacy up -d syslog-sink
+  # It binds .21 so it can run alongside Vector without fighting for .20.
   syslog-sink:
+    profiles: [legacy]
     build: ./telemetry
     container_name: netsim-syslog-sink
     networks:
       mgmt:
-        ipv4_address: ${MGMT_PREFIX:-172.30.0}.20
+        ipv4_address: ${MGMT_PREFIX:-172.30.0}.21
     volumes:
       - ./out:/out
     environment:
       RUN_ID: ${RUN_ID:-stage0-dev}
+
+  # ---------------------------------------------------------------
+  # Telemetry spine
+  # ---------------------------------------------------------------
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8-alpine
+    container_name: netsim-clickhouse
+    networks:
+      telemetry:
+        ipv4_address: ${TELEMETRY_PREFIX:-172.32.0}.10
+    ports:
+      # Host-only: verify.py queries this from outside the containers.
+      - "127.0.0.1:8123:8123"
+    volumes:
+      - ./telemetry/clickhouse:/docker-entrypoint-initdb.d:ro
+      - clickhouse-data:/var/lib/clickhouse
+    ulimits:
+      nofile: { soft: 262144, hard: 262144 }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8123/ping || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
+
+  vector:
+    image: timberio/vector:0.41.1-alpine
+    container_name: netsim-vector
+    networks:
+      mgmt:
+        # cSRX sends syslog here; the address must match bootstrap.set.
+        ipv4_address: ${MGMT_PREFIX:-172.30.0}.20
+      telemetry:
+        ipv4_address: ${TELEMETRY_PREFIX:-172.32.0}.20
+    volumes:
+      - ./telemetry/vector/vector.yaml:/etc/vector/vector.yaml:ro
+      - ./out:/out
+      - vector-data:/var/lib/vector
+    environment:
+      RUN_ID: ${RUN_ID:-stage0-dev}
+      VECTOR_LOG: ${VECTOR_LOG:-info}
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: netsim-grafana
+    networks:
+      telemetry:
+        ipv4_address: ${TELEMETRY_PREFIX:-172.32.0}.30
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    volumes:
+      - ./telemetry/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./telemetry/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    environment:
+      # Installed on first start — needs egress, which is why the telemetry
+      # network is not internal.
+      GF_INSTALL_PLUGINS: grafana-clickhouse-datasource
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_USERS_DEFAULT_THEME: dark
+    depends_on:
+      clickhouse:
+        condition: service_healthy
 
   # ---------------------------------------------------------------
   # The "internet" — one TLS site for now.
@@ -130,3 +220,8 @@ services:
     depends_on:
       web:
         condition: service_started
+
+volumes:
+  clickhouse-data:
+  vector-data:
+  grafana-data:

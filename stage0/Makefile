@@ -15,6 +15,9 @@ UNTRUST := $(shell [ -f ./.env ] && . ./.env; echo $${UNTRUST_PREFIX:-203.0.113}
 # One switch, two docker settings. Egress requires internal=false AND
 # masquerade=true; setting only one produces a container that can transmit but
 # never receive replies, which looks exactly like "no internet".
+TELEMETRY := $(shell [ -f ./.env ] && . ./.env; echo $${TELEMETRY_PREFIX:-172.32.0})
+GF_PORT   := $(shell [ -f ./.env ] && . ./.env; echo $${GRAFANA_PORT:-3000})
+
 MGMT_EGRESS     := $(shell [ -f ./.env ] && . ./.env; echo $${MGMT_EGRESS:-false})
 MGMT_INTERNAL   := $(if $(filter true,$(MGMT_EGRESS)),false,true)
 MGMT_MASQUERADE := $(if $(filter true,$(MGMT_EGRESS)),true,false)
@@ -31,7 +34,10 @@ help:
 	@echo "  make up           networks, sink, cSRX (ordered), web"
 	@echo "  make config       push the Junos bootstrap config"
 	@echo "  make traffic      run the workers and follow them"
-	@echo "  make verify       check the Stage 0 exit criteria"
+	@echo "  make verify       check the exit criteria (from ClickHouse)"
+	@echo "  make runs         per-run health summary"
+	@echo "  make dashboard    regenerate and reload the Grafana dashboard"
+	@echo "  make sql Q=...    ad-hoc ClickHouse query"
 	@echo "  make status       what is running, and is the AppID database intact"
 	@echo "  make down         stop and remove everything (DESTROYS the AppID database)"
 	@echo "  make reset        down + wipe outputs (keeps PKI)"
@@ -102,7 +108,8 @@ signatures-online:
 	docker exec -it netsim-csrx cli -c 'show services application-identification status'
 
 up: pki nets csrx
-	docker compose start syslog-sink
+	docker compose up -d clickhouse
+	docker compose up -d vector
 	docker compose start web
 	@echo
 	@# The signature database lives in the container filesystem, so recreating
@@ -125,14 +132,37 @@ config:
 traffic:
 	@echo "$(RUN_ID)" > out/current_run_id
 	@echo "==> run_id: $(RUN_ID)"
-	RUN_ID=$(RUN_ID) SEED=$(SEED) docker compose up -d --force-recreate syslog-sink
-	@sleep 1
+	@# Vector stamps run_id onto every flow row, so it is recreated alongside
+	@# the engine. Two containers minting their own ids was a real defect.
+	RUN_ID=$(RUN_ID) SEED=$(SEED) docker compose up -d --force-recreate vector
+	@sleep 2
 	RUN_ID=$(RUN_ID) SEED=$(SEED) docker compose up -d --force-recreate workstation
 	@docker compose logs -f workstation
 
-# Score the run recorded by the last `make traffic`.
+# Score the run recorded by the last `make traffic`, from ClickHouse.
 verify:
+	@RUN_ID=$$(cat out/current_run_id 2>/dev/null) GRAFANA_PORT=$(GF_PORT) python3 verify_sql.py
+
+# Stage 0's CSV-based verifier. Only meaningful with the legacy python sink:
+#   docker compose --profile legacy up -d syslog-sink
+verify-csv:
 	@RUN_ID=$$(cat out/current_run_id 2>/dev/null) python3 verify.py
+
+# Regenerate the Grafana dashboard from its generator, then reload it.
+dashboard:
+	cd telemetry/grafana && python3 make_dashboard.py \
+		&& mv netsim-stage1.json dashboards/netsim-stage1.json
+	@docker restart netsim-grafana >/dev/null 2>&1 || true
+	@echo "==> http://localhost:$(GF_PORT)"
+
+# Ad-hoc query:  make sql Q="SELECT count() FROM netsim.flows"
+sql:
+	@curl -sS "http://127.0.0.1:8123/" --data-binary "$${Q:-SELECT 1}"
+
+# Per-run health straight from the view every later stage consumes.
+runs:
+	@curl -sS "http://127.0.0.1:8123/" --data-binary \
+		"SELECT * FROM netsim.run_summary FORMAT PrettyCompact"
 
 # Diagnose source-port capture, the join key the labelled dataset rests on.
 probe-port:
@@ -196,6 +226,11 @@ status:
 	@echo '--- AppID signature database (destroyed by make down) ---'
 	-@docker exec netsim-csrx cli -c 'show services application-identification status' 2>/dev/null \
 		| grep -E 'Application package version|Release date' | sed 's/^/  /'
+	@echo
+	@echo '--- telemetry ---'
+	-@curl -sS --max-time 3 "http://127.0.0.1:8123/ping" 2>/dev/null | sed 's/^/  clickhouse: /' || echo '  clickhouse: unreachable'
+	-@curl -sS --max-time 3 -o /dev/null -w '  grafana:    HTTP %{http_code}\n' "http://127.0.0.1:$(GF_PORT)/api/health" 2>/dev/null || echo '  grafana:    unreachable'
+	-@curl -sS --max-time 3 "http://127.0.0.1:8123/" --data-binary "SELECT count() FROM netsim.flows" 2>/dev/null | sed 's/^/  flow rows:  /'
 	@echo
 	@echo '--- last run ---'
 	@echo "  run_id: $$(cat out/current_run_id 2>/dev/null || echo '(none)')"

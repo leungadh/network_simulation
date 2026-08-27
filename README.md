@@ -34,14 +34,40 @@ replayed with and without an attack.
 
 | Stage | Scope | State |
 |---|---|---|
-| 0 | Walking skeleton — 3 workers, 1 TLS site, cSRX, flows to CSV | scaffolded |
-| 1 | Telemetry spine — Vector, ClickHouse, Grafana, the labelled join | not started |
+| 0 | Walking skeleton — 3 workers, 1 TLS site, cSRX, flows to CSV | **complete** |
+| 1 | Telemetry spine — Vector, ClickHouse, Grafana, the labelled join | next |
 | 2 | Personas and the fake internet — 6 personas, 25 workers | not started |
 | 3 | Network dashboard | not started |
 | 4 | Pixel office — self-built Canvas 2D visualiser | not started |
 | 5 | Adversary layer — beaconing, DNS tunnelling, exfil, scanning | not started |
 | 6 | Detection — baselines, beacon finder, models, eval harness | not started |
 | 7 | Response loop — alert to policy push | not started |
+
+### Stage 0 results
+
+All five exit criteria met: 43 firewall sessions against 43 engine intents,
+**100% flow-to-intent join rate**, 100% source-port capture, even distribution
+across three workers, and AppID classifying traffic once the signature database
+was installed.
+
+Five defects had to be fixed to get there, each of which would have silently
+corrupted the labelled dataset rather than failing loudly:
+
+- **TX checksum offload** — cSRX's userspace dataplane loses the
+  `CHECKSUM_PARTIAL` marking, so offloaded checksums arrive unfinished and the
+  receiving kernel drops them silently. Packets visible in `tcpdump`, listener
+  up, no response.
+- **`verify=` ignored by httpx** when an explicit transport is supplied, which
+  the source-IP binding requires. Fails identically with `verify=False`.
+- **Source-port capture** returned 0 with keep-alive disabled, because the
+  socket closes before it can be read. Fixed by capturing during the stream.
+- **Split `run_id`** — the sink and the engine each minted their own, so the
+  two halves of the ground truth could never correlate.
+- **Docker interface ordering** is not deterministic when several networks are
+  attached at container creation, and cSRX maps `eth0/1/2` positionally.
+
+Milestone write-up: [`docs/Stage_1.md`](docs/Stage_1.md) — architecture,
+topology, defects fixed, and measured results.
 
 Full design: [`docs/architecture_and_staging_plan.md`](docs/architecture_and_staging_plan.md)
 Stage 0 topology: [`docs/topology/topology.svg`](docs/topology/topology.svg)
@@ -71,6 +97,7 @@ make run                    # pki -> up -> config -> traffic -> verify
 
 ```
 docs/           architecture and staging plan
+docs/Stage_1.md milestone write-up for the completed walking skeleton
 docs/banner/    banner source + generator
 docs/topology/  Stage 0 topology diagram + generator
 stage0/         walking skeleton (see stage0/README.md)

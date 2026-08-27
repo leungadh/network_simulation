@@ -317,6 +317,10 @@ Each stage has an exit criterion. Don't start the next one until it's met.
 **Exit:** cSRX logs sessions from three distinct source IPs, AppID classifies them as
 HTTPS/SSL, and each session matches an intent record. Dump it to CSV and eyeball it.
 
+> **MET.** 43 sessions / 43 intents, 100% join, 100% source-port capture,
+> AppID reporting `SSL`. See "Stage 0 results" in the root README for the five
+> defects fixed along the way — all of them silent-corruption class.
+
 > The most common failure here is cSRX interface/zone binding. Get one flow through
 > before adding anything else.
 

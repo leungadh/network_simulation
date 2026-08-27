@@ -181,6 +181,49 @@ takeover. It then separately confirms `tap0` carries the trust address and
 
 ---
 
+## Telemetry (Stage 2 of the plan)
+
+The Python syslog sink is superseded by a proper spine:
+
+```
+cSRX RT_FLOW ──syslog──► Vector ──► ClickHouse ──► Grafana
+out/intents.jsonl ──tail─►   │         │
+                             │    netsim.labelled_flows   ◄── the join
+                             └──► out/syslog_raw.log      (raw archive)
+```
+
+| Service | Address | Purpose |
+|---|---|---|
+| `netsim-vector` | `172.30.0.20` (mgmt), `172.32.0.20` | ingest; takes the sink's old address |
+| `netsim-clickhouse` | `172.32.0.10`, host `127.0.0.1:8123` | storage |
+| `netsim-grafana` | `172.32.0.30`, host `:3000` | dashboards |
+
+`netsim.labelled_flows` is the artefact everything downstream reads. It uses an
+**ASOF join** rather than a range join: ephemeral ports do get reused in a long
+run, and a range join would emit one row per candidate intent, inflating every
+count. ASOF takes the single nearest preceding intent.
+
+```bash
+make runs                                  # per-run health
+make sql Q="SELECT * FROM netsim.run_summary FORMAT PrettyCompact"
+make dashboard                             # regenerate and reload
+```
+
+Grafana is at `http://localhost:3000` (anonymous viewer access is on).
+
+The Stage 0 sink is still available for debugging a VRL change:
+
+```bash
+docker compose --profile legacy up -d syslog-sink   # writes out/flows.csv
+make verify-csv
+```
+
+Parse failures are never dropped silently — they land in
+`out/parse_failures.log`, and the raw syslog archive is written independently of
+parsing, so a VRL bug cannot lose source data.
+
+---
+
 ## Which changes need what
 
 Not everything needs a restart, and the only genuinely destructive command is
@@ -188,7 +231,10 @@ Not everything needs a restart, and the only genuinely destructive command is
 
 | What changed | What to run | Why |
 |---|---|---|
-| `verify.py` | `make verify` | runs on the host |
+| `verify_sql.py` | `make verify` | runs on the host |
+| `telemetry/clickhouse/*.sql` | `make down && make up` | init scripts run once, on an empty volume |
+| `telemetry/vector/vector.yaml` | `docker compose up -d --force-recreate vector` | config is mounted, not baked |
+| `telemetry/grafana/**` | `make dashboard` | provisioning is mounted |
 | `Makefile` | nothing | runs on the host |
 | `csrx/bootstrap.set` | `make config` | re-push the Junos config |
 | `*/entrypoint.sh`, `*/Dockerfile` | `make up` | rebuilds the image |

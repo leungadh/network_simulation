@@ -1,0 +1,16 @@
+apiVersion: 1
+
+providers:
+  - name: netsim
+    orgId: 1
+    folder: NetSim
+    type: file
+    disableDeletion: false
+    # Dashboards are generated (make_dashboard.py) and provisioned from disk, so
+    # edits in the UI are not the source of truth. allowUiUpdates lets you
+    # experiment; regenerate and redeploy to make a change stick.
+    allowUiUpdates: true
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false
