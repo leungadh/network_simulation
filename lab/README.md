@@ -390,7 +390,17 @@ curl -sS -m 5 http://127.0.0.1:8123/ping     # "Ok." means the server is fine
 ```
 
 If `/ping` answers but the container reads unhealthy, the probe is at fault, not
-the server.
+the server. That happened here twice:
+
+- the probe called `clickhouse-client` with credentials from the environment,
+  so a container created before those variables existed failed regardless of
+  server health
+- the probe used `http://localhost:8123`, and inside the container `localhost`
+  resolves to both `127.0.0.1` and `::1`; wget **tries `::1` first**, which is
+  refused on a host with IPv6 disabled while IPv4 serves normally
+
+Both are fixed. The lesson generalises: on this host, always address `127.0.0.1`
+explicitly rather than `localhost`.
 
 **ClickHouse errors.** Look in the server's own log. It writes to a file
 **inside the container** — `docker logs` shows only the entrypoint's lines, and
