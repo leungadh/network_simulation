@@ -26,10 +26,32 @@ GREEN, RED, YELLOW, RESET = "\033[32m", "\033[31m", "\033[33m", "\033[0m"
 results = []
 
 
+def num(v, default=0):
+    """
+    Coerce a ClickHouse value to a number.
+
+    ClickHouse serialises UInt64/Int64 as *quoted strings* in JSON to avoid
+    precision loss in consumers with 53-bit floats, so count() arrives as "0"
+    rather than 0. The URL parameter below disables that, but this stays as a
+    guard: one unquoted assumption is how `'>' not supported between str and
+    int` got shipped.
+    """
+    if v is None or v == "":
+        return default
+    try:
+        f = float(v)
+        return int(f) if f.is_integer() else f
+    except (TypeError, ValueError):
+        return default
+
+
 def ch(query: str):
     """Run a query, return a list of dicts."""
     body = (query.rstrip().rstrip(";") + " FORMAT JSONEachRow").encode()
-    req = urllib.request.Request(CH, data=body, method="POST")
+    # Ask ClickHouse not to quote 64-bit integers, so counts arrive as numbers.
+    req = urllib.request.Request(
+        CH + "?output_format_json_quote_64bit_integers=0",
+        data=body, method="POST")
     # The default user has no network access unless credentials are configured,
     # so authenticate explicitly rather than relying on an anonymous default.
     req.add_header("X-ClickHouse-User", CH_USER)
@@ -50,6 +72,8 @@ def ch(query: str):
 
 
 def one(query, field, default=0):
+    """Raw first cell. Do NOT coerce here — run_id is a string, and coercing
+    it turned a valid run into 0 and reported 'no runs in ClickHouse'."""
     rows = ch(query)
     return rows[0][field] if rows else default
 
@@ -116,18 +140,37 @@ def main():
         FROM netsim.labelled_flows WHERE {scope}
     """, run))[0]
 
-    raw_events = one(q("SELECT count() AS n FROM netsim.flows WHERE run_id = '{run}'", run), "n")
-    intents_n = one(q("SELECT count() AS n FROM netsim.intents WHERE run_id = '{run}'", run), "n")
+    raw_events = num(one(q("SELECT count() AS n FROM netsim.flows WHERE run_id = '{run}'", run), "n"))
+    intents_n = num(one(q("SELECT count() AS n FROM netsim.intents WHERE run_id = '{run}'", run), "n"))
 
-    print(f"  {raw_events} flow events ({totals['closes']} worker closes), {intents_n} intents")
+    print(f"  {raw_events} flow events ({num(totals['closes'])} worker closes), {intents_n} intents")
     if infra:
-        print("  " + str(sum(r["n"] for r in infra)) + " non-worker flow(s) excluded: "
+        print("  " + str(sum(num(r["n"]) for r in infra)) + " non-worker flow(s) excluded: "
               + ", ".join(f"{r['ip']} x{r['n']}" for r in infra))
     print()
 
+    if raw_events == 0 and intents_n == 0:
+        print(f"{RED}Nothing ingested for this run.{RESET}\n")
+        others = ch("SELECT run_id, count() AS n FROM netsim.flows "
+                    "GROUP BY run_id ORDER BY max(ts) DESC LIMIT 5")
+        if others:
+            print("  Runs that DO have flows:")
+            for r in others:
+                print(f"    {r['run_id']}  {num(r['n'])} events")
+            print("\n  The run id comes from out/current_run_id, written by")
+            print("  `make traffic`. If it is not listed above, Vector stamped a")
+            print("  different id — it must be recreated with the same RUN_ID.")
+        else:
+            print("  netsim.flows is empty: Vector is not ingesting at all.")
+            print("    docker logs netsim-vector | tail -40")
+            print("    cat out/parse_failures.log")
+            print("    docker exec netsim-csrx cli -c "
+                  "'show configuration system syslog'")
+        return 1
+
     # 1 — ingestion
     check("flow events ingested", raw_events > 0)
-    check("session_close events ingested", totals["closes"] > 0,
+    check("session_close events ingested", num(totals["closes"]) > 0,
           hint="Only session_create seen. Check `then log session-close` "
                "in the policy.")
     check("intents ingested", intents_n > 0,
@@ -140,7 +183,7 @@ def main():
         FROM netsim.labelled_flows WHERE {scope}
         GROUP BY worker_name, src_ip ORDER BY ip
     """, run))
-    check("≥3 distinct source IPs", totals["sources"] >= 3,
+    check("≥3 distinct source IPs", num(totals["sources"]) >= 3,
           "\n".join(f"{r['ip']}  {r['worker_name'] or '(unmatched)'}: {r['n']} sessions"
                     for r in per_worker))
 
@@ -149,7 +192,7 @@ def main():
         SELECT application, count() AS n FROM netsim.labelled_flows
         WHERE {scope} GROUP BY application ORDER BY n DESC
     """, run))
-    classified = sum(r["n"] for r in apps
+    classified = sum(num(r["n"]) for r in apps
                      if r["application"] not in ("UNKNOWN", "NONE", ""))
     check("AppSecure classified traffic", classified > 0,
           detail="\n".join(f"{r['application'] or '(empty)'}: {r['n']}" for r in apps),
@@ -165,30 +208,30 @@ def main():
                countIf(ok = 0) AS failed
         FROM netsim.intents WHERE run_id = '{run}'
     """, run))[0]
-    rate = 100 * ports["with_port"] / ports["ok_n"] if ports["ok_n"] else 0
-    if ports["failed"]:
-        print(f"  ({ports['failed']} failed request(s) excluded from capture rate)")
+    rate = 100 * num(ports["with_port"]) / num(ports["ok_n"]) if num(ports["ok_n"]) else 0
+    if num(ports["failed"]):
+        print(f"  ({num(ports['failed'])} failed request(s) excluded from capture rate)")
     check(f"source-port capture rate ({rate:.1f}%)", rate >= 95,
           hint="Below 95% means the httpx accessor in adapters/https.py has\n"
                "broken against the installed version. Run: make probe-port")
 
     # 5 — the join, as the view computes it
-    jr = totals["join_rate"] or 0
+    jr = num(totals["join_rate"]) or 0
     detail = ""
     if jr < 98:
-        detail = (f"{totals['closes'] - totals['unmatched'] - totals['out_of_window']}"
-                  f"/{totals['closes']} sessions matched.\n"
-                  f"{totals['unmatched']} had no intent on (src_ip, src_port) — "
+        detail = (f"{num(totals['closes']) - num(totals['unmatched']) - num(totals['out_of_window'])}"
+                  f"/{num(totals['closes'])} sessions matched.\n"
+                  f"{num(totals['unmatched'])} had no intent on (src_ip, src_port) — "
                   "source NAT or keep-alive.\n"
-                  f"{totals['out_of_window']} matched but fell outside the "
+                  f"{num(totals['out_of_window'])} matched but fell outside the "
                   f"{JOIN_WINDOW_MS}ms window — clock skew, check NTP.")
     check(f"flow-to-intent join rate ({jr:.1f}%)", jr >= 98, hint=detail)
 
     # duration, for the sustained-run criterion
-    span = ch(q(f"""
+    span = num(ch(q(f"""
         SELECT dateDiff('second', min(ts), max(ts)) AS secs
         FROM netsim.labelled_flows WHERE {scope}
-    """, run))[0]["secs"]
+    """, run))[0]["secs"])
     mins = (span or 0) / 60
     check(f"sustained run ({mins:.1f} min)", mins >= 30, warn=True,
           hint="Stage 2 wants ≥30 minutes to call the join rate trustworthy.\n"
