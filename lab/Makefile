@@ -240,9 +240,20 @@ status:
 logs:
 	docker compose logs -f
 
+# Sweep by NAME, not just by compose project.
+#
+# cSRX is launched outside compose, and a compose project rename leaves the
+# previous project's containers stranded — `docker compose down` only knows
+# about the project named in docker-compose.yml. The name filter is anchored to
+# "netsim-" so it cannot touch other labs on this host.
 down:
-	-docker rm -f netsim-csrx netsim-ordertest 2>/dev/null
-	docker compose down --remove-orphans
+	-@docker ps -aq --filter "name=^netsim-" | xargs -r docker rm -f
+	-@docker compose down --remove-orphans 2>/dev/null
+	@# Networks from a previous project name would keep holding our subnets.
+	@# Docker refuses to remove one still in use, so this is safe.
+	-@docker network ls -q --filter "name=netsim" | xargs -r docker network rm 2>/dev/null
+	@echo "==> down. Note: this destroyed the AppID signature database."
+	@echo "    make up reinstalls it from csrx/signatures/ if a package is there."
 
 reset: down
 	rm -rf out
