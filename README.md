@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/licence-MIT-blue.svg" alt="MIT licence">
-  <img src="https://img.shields.io/badge/stage-0%20walking%20skeleton-f5a524.svg" alt="Stage 0">
+  <img src="https://img.shields.io/badge/stage-0%20walking%20skeleton-f5a524.svg" alt="Stage 1">
   <img src="https://img.shields.io/badge/host-x86__64%20only-important.svg" alt="x86_64 only">
 </p>
 
@@ -34,16 +34,16 @@ replayed with and without an attack.
 
 | Stage | Scope | State |
 |---|---|---|
-| 0 | Walking skeleton — 3 workers, 1 TLS site, cSRX, flows to CSV | **complete** |
-| 1 | Telemetry spine — Vector, ClickHouse, Grafana, the labelled join | next |
-| 2 | Personas and the fake internet — 6 personas, 25 workers | not started |
-| 3 | Network dashboard | not started |
-| 4 | Pixel office — self-built Canvas 2D visualiser | not started |
-| 5 | Adversary layer — beaconing, DNS tunnelling, exfil, scanning | not started |
-| 6 | Detection — baselines, beacon finder, models, eval harness | not started |
-| 7 | Response loop — alert to policy push | not started |
+| 1 | Walking skeleton — 3 workers, 1 TLS site, cSRX, flows to CSV | **complete** |
+| 2 | Telemetry spine — Vector, ClickHouse, Grafana, the labelled join | built, awaiting verification |
+| 3 | Personas and the fake internet — 6 personas, 25 workers | not started |
+| 4 | Network dashboard | not started |
+| 5 | Pixel office — self-built Canvas 2D visualiser | not started |
+| 6 | Adversary layer — beaconing, DNS tunnelling, exfil, scanning | not started |
+| 7 | Detection — baselines, beacon finder, models, eval harness | not started |
+| 8 | Response loop — alert to policy push | not started |
 
-### Stage 0 results
+### Stage 1 results
 
 All five exit criteria met: 43 firewall sessions against 43 engine intents,
 **100% flow-to-intent join rate**, 100% source-port capture, even distribution
@@ -66,11 +66,11 @@ corrupted the labelled dataset rather than failing loudly:
 - **Docker interface ordering** is not deterministic when several networks are
   attached at container creation, and cSRX maps `eth0/1/2` positionally.
 
-Milestone write-up: [`docs/Stage_1.md`](docs/Stage_1.md) — architecture,
+Milestone write-up: [`docs/Stage_2.md`](docs/Stage_2.md) — architecture,
 topology, defects fixed, and measured results.
 
 Full design: [`docs/architecture_and_staging_plan.md`](docs/architecture_and_staging_plan.md)
-Stage 0 topology: [`docs/topology/topology.svg`](docs/topology/topology.svg)
+Stage 1 topology: [`docs/topology/topology.svg`](docs/topology/topology.svg)
 
 ## Requirements
 
@@ -86,21 +86,21 @@ integration needs the x86_64 host.
 ## Quick start
 
 ```bash
-cd stage0
+cd stage1
 cp .env.example .env        # set CSRX_IMAGE to your loaded image tag
 make run                    # pki -> up -> config -> traffic -> verify
 ```
 
-`make verify` must pass all five exit criteria before moving to Stage 1.
+`make verify` must pass all five exit criteria before moving to Stage 2.
 
 ## Repository layout
 
 ```
 docs/           architecture and staging plan
-docs/Stage_1.md milestone write-up for the completed walking skeleton
+docs/Stage_2.md milestone write-up for the completed walking skeleton
 docs/banner/    banner source + generator
-docs/topology/  Stage 0 topology diagram + generator
-stage0/         walking skeleton (see stage0/README.md)
+docs/topology/  Stage 1 topology diagram + generator
+lab/         walking skeleton (see lab/README.md)
 ```
 
 The banner is generated, not hand-drawn — `python3 docs/banner/make_banner.py`
@@ -123,7 +123,7 @@ The engine, protocol adapters, personas, visualiser and detection code are
 architecture-neutral and can be developed anywhere. Only full-stack integration
 against cSRX needs the x86_64 Ubuntu host.
 
-Run outputs (`stage0/out/`) are gitignored — they are regenerated each run and
+Run outputs (`lab/out/`) are gitignored — they are regenerated each run and
 grow quickly. To compare runs across machines, export the specific `run_id`
 rather than committing raw output.
 
@@ -137,7 +137,7 @@ This repository does **not** contain, and must never contain, the Juniper cSRX
 image or any Juniper licence keys. Those are licensed separately and are
 excluded by `.gitignore`.
 
-Sprite assets for the Stage 4 pixel office are not yet included. When added,
+Sprite assets for the Stage 5 pixel office are not yet included. When added,
 their licences will be recorded here — likely MIT assets from
 [pixel-agents](https://github.com/pixel-agents-hq/pixel-agents) (which requires
 retaining the copyright notice) or CC0 assets from Kenney.nl. MIT on a

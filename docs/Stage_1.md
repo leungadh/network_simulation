@@ -2,11 +2,7 @@
 
 **Status:** Complete — all exit criteria met
 **Date:** 27 August 2026
-**Code:** [`stage0/`](../stage0/) · **Plan:** [`architecture_and_staging_plan.md`](architecture_and_staging_plan.md) §6
-
-> **Numbering.** This is the first implementation milestone. The staging plan
-> calls it *Stage 0 — walking skeleton*, and the code lives in `stage0/`. The
-> two names refer to the same work.
+**Code:** [`lab/`](../lab/) · **Plan:** [`architecture_and_staging_plan.md`](architecture_and_staging_plan.md) §6
 
 ---
 
@@ -21,7 +17,7 @@ Everything in the later stages assumes yes. Rather than assume it, this stage
 builds the thinnest possible end-to-end path and measures it.
 
 Nothing here is meant to be realistic. Three workers, one website, one activity
-mix. Realism arrives in Stage 2; what matters now is that the plumbing is sound
+mix. Realism arrives in Stage 3; what matters now is that the plumbing is sound
 and, critically, that the **labelling is trustworthy**.
 
 ---
@@ -263,7 +259,7 @@ and before the socket sees it.
 repeats across retransmits while the second changes.
 
 **Fix:** `ethtool -K eth0 tx off` in both endpoint entrypoints. Any service added
-in Stage 2 needs the same.
+in Stage 3 needs the same.
 
 ### 6.2 `verify=` silently ignored by httpx
 
@@ -303,7 +299,7 @@ empty host:
 
 ## 7. Exit criteria — results
 
-`make verify`, run 27 August 2026 (`run_id stage0-20260827-095833`):
+`make verify`, run 27 August 2026 (`run_id stage1-20260827-095833`):
 
 | Check | Result |
 |---|---|
@@ -348,7 +344,7 @@ networking.
 Carried knowingly into later stages:
 
 - **One service, one activity mix.** AppID reports the generic `SSL` class
-  because there is only one HTTPS destination. Stage 2's distinct hostnames
+  because there is only one HTTPS destination. Stage 3's distinct hostnames
   (`cloud.`, `files.`, `stream.`) are what make classification informative.
 - **No TLS decryption.** AppID's granularity is bounded by what SNI reveals.
   Because the workers already trust the lab CA, adding SSL forward proxy later
@@ -360,7 +356,7 @@ Carried knowingly into later stages:
 
 ---
 
-## 10. Next
+## 10. Next — Stage 2
 
 The telemetry spine: Vector replacing the Python sink, ClickHouse replacing the
 CSV, the `labelled_flows` view, and Grafana. Because the CSV columns already

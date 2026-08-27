@@ -9,8 +9,8 @@ licen[cs]e-key*
 junos-*.tgz
 
 # Application signature packages — licensed Juniper software, large.
-stage0/csrx/signatures/*
-!stage0/csrx/signatures/README.md
+lab/csrx/signatures/*
+!lab/csrx/signatures/README.md
 
 # Secrets and local config
 .env
@@ -40,3 +40,12 @@ venv/
 
 # Bridge scratch
 _to_delete/
+
+# Pre-rename backup copies of the lab. Keeping one is fine; committing it is
+# not — a stale duplicate declares the same subnets as lab/, so bringing it up
+# collides with the live lab ("Pool overlaps with other one on this address
+# space"). Git history is the real backup: the commit before the rename has
+# everything under stage0/.
+stage0/
+*-backup/
+*.bak/

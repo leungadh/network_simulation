@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Stage 0 topology diagram.
+Stage 1 topology diagram.
 
 Reflects the lab as actually deployed: bridge names, subnets, the eth->Junos
 interface mapping, and where the two ground-truth files come from.
@@ -82,8 +82,8 @@ def header():
 
 # ---------------------------------------------------------------- title
 header()
-text(42, 52, "STAGE 0 — TOPOLOGY", INK, 25, "700", ls=2.2)
-text(43, 78, "netsim-stage0  ·  cSRX 26.2R1.7  ·  all bridges internal (no route to the real internet)",
+text(42, 52, "STAGE 1 — TOPOLOGY", INK, 25, "700", ls=2.2)
+text(43, 78, "netsim  ·  cSRX 26.2R1.7  ·  all bridges internal (no route to the real internet)",
      MUTED, 12.5)
 
 # ---------------------------------------------------------------- host boundary
@@ -167,7 +167,7 @@ text(UX + 30, UY + 148, "/ /small /medium /large /upload", DIM, 9.5)
 text(UX + 30, UY + 164, "cert signed by the lab CA (private)", DIM, 9.5)
 
 box(UX + 16, UY + 190, UW - 32, 60, DIM, "#0e1428", rx=8, width=1)
-text(UX + 30, UY + 210, "Stage 2 adds:", MUTED, 10, "600")
+text(UX + 30, UY + 210, "Stage 3 adds:", MUTED, 10, "600")
 text(UX + 30, UY + 226, "MinIO (S3) · Nextcloud · HLS · SMB · CoreDNS", DIM, 9.5)
 text(UX + 30, UY + 240, "return route 10.20.0.0/16 via 203.0.113.1", DIM, 9.5)
 

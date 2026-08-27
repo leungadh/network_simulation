@@ -1,0 +1,68 @@
+# cSRX 26.2R1 — Stage 1 bootstrap configuration
+#
+# Load with:  ./csrx/apply-config.sh
+# Or manually: docker exec -it csrx cli
+#              configure
+#              load set terminal   (paste, then Ctrl-D)
+#              commit
+#
+# Design notes:
+#   * NO source NAT. This is deliberate — it keeps the source port that the
+#     engine recorded identical to the one cSRX logs, so the intent<->flow
+#     join stays clean. Adding NAT later means capturing the nat_* fields.
+#   * structured-data syslog. RT_FLOW then emits key="value" pairs, which are
+#     far easier to parse than the positional format, and Stage 2's Vector
+#     config depends on it.
+#   * permit-all policy with logging. Stage 1 proves the path; policy
+#     granularity arrives in Stage 3.
+
+set system host-name csrx-lab
+set system services ssh
+# DNS is only reachable when MGMT_INTERNAL=false. Harmless otherwise — an
+# unreachable resolver costs nothing because nothing else here resolves names.
+set system name-server 8.8.8.8
+set system name-server 1.1.1.1
+set system services netconf ssh
+
+# --- Syslog to the sink on the management network ------------------------
+# Prefix placeholders are substituted by apply-config.sh from .env.
+set system syslog host __MGMT_PREFIX__.20 any any
+set system syslog host __MGMT_PREFIX__.20 structured-data
+set system syslog host __MGMT_PREFIX__.20 source-address __MGMT_PREFIX__.10
+
+# --- Interfaces ----------------------------------------------------------
+# These must match the ipv4_address values in docker-compose.yml. cSRX may
+# inherit the Docker-assigned addresses on startup depending on version;
+# configuring them identically makes the result the same either way.
+set interfaces ge-0/0/0 unit 0 family inet address __TRUST_PREFIX__.0.1/16
+set interfaces ge-0/0/1 unit 0 family inet address __UNTRUST_PREFIX__.1/24
+
+# --- Zones ---------------------------------------------------------------
+set security zones security-zone trust interfaces ge-0/0/0.0 host-inbound-traffic system-services all
+set security zones security-zone trust interfaces ge-0/0/0.0 host-inbound-traffic protocols all
+set security zones security-zone untrust interfaces ge-0/0/1.0 host-inbound-traffic system-services all
+set security zones security-zone untrust interfaces ge-0/0/1.0 host-inbound-traffic protocols all
+
+# --- Application identification (AppSecure) ------------------------------
+# This is what populates the `application` and `nested-application` fields
+# in RT_FLOW_SESSION_CLOSE. Without an AppSecure licence these stay UNKNOWN.
+set services application-identification
+set security zones security-zone trust application-tracking
+
+# --- Policy --------------------------------------------------------------
+# Log both session-init and session-close. session-close carries the byte and
+# packet counters plus the AppID result, and is the record Stage 2 ingests.
+# session-init is logged too because it is the most reliable place to observe
+# the original source port.
+set security policies from-zone trust to-zone untrust policy permit-all match source-address any
+set security policies from-zone trust to-zone untrust policy permit-all match destination-address any
+set security policies from-zone trust to-zone untrust policy permit-all match application any
+set security policies from-zone trust to-zone untrust policy permit-all then permit
+set security policies from-zone trust to-zone untrust policy permit-all then log session-init
+set security policies from-zone trust to-zone untrust policy permit-all then log session-close
+
+# --- Flow options --------------------------------------------------------
+# Keep the session table generous; Stage 3 scales to 25 workers and Stage 7
+# introduces scanning attacks that open many short-lived sessions.
+set security flow tcp-session no-syn-check
+set security flow tcp-session no-sequence-check

@@ -80,7 +80,7 @@ natural-language querying of the flow database. Never in the packet path.
 
 The reason to simulate rather than capture real traffic is *perfect ground truth*. The
 simulator knows what every worker intended. Capture that intent as a first-class output
-from Stage 0 — retrofitting it later is painful and the labels end up unreliable.
+from Stage 1 — retrofitting it later is painful and the labels end up unreliable.
 
 ---
 
@@ -199,8 +199,8 @@ class ProtocolAdapter(Protocol):
     async def execute(self, worker: Worker, action: Action) -> IntentRecord: ...
 ```
 
-Adding a protocol never touches the scheduler. This is what lets Stage 2 add four
-services without destabilising Stage 0's engine.
+Adding a protocol never touches the scheduler. This is what lets Stage 3 add four
+services without destabilising Stage 1's engine.
 
 ### 4.4 Every record carries `run_id` and schema version
 
@@ -296,7 +296,7 @@ LEFT JOIN intents AS i
 WHERE f.event_type = 'session_close';
 ```
 
-**Validate the join rate in Stage 1.** If under ~98% of flows match an intent, something
+**Validate the join rate in Stage 2.** If under ~98% of flows match an intent, something
 is wrong — NAT rewriting source ports, clock drift, or port reuse inside the window — and
 every downstream model inherits the problem. Treat join rate as a health metric on the
 Grafana dashboard, not a one-off check.
@@ -307,7 +307,7 @@ Grafana dashboard, not a one-off check.
 
 Each stage has an exit criterion. Don't start the next one until it's met.
 
-### Stage 0 — Walking skeleton
+### Stage 1 — Walking skeleton
 *Goal: prove the whole path end to end at minimum width.*
 
 - `docker compose` with: one workstation container (3 workers), one nginx TLS site, cSRX, syslog to a flat file
@@ -318,7 +318,7 @@ Each stage has an exit criterion. Don't start the next one until it's met.
 HTTPS/SSL, and each session matches an intent record. Dump it to CSV and eyeball it.
 
 > **MET.** 43 sessions / 43 intents, 100% join, 100% source-port capture,
-> AppID reporting `SSL`. See "Stage 0 results" in the root README for the five
+> AppID reporting `SSL`. See "Stage 1 results" in the root README for the five
 > defects fixed along the way — all of them silent-corruption class.
 
 > The most common failure here is cSRX interface/zone binding. Get one flow through
@@ -347,7 +347,7 @@ network attachment order sets that mapping. Set the `priority` field explicitly 
 Compose network attachment rather than relying on declaration order. Getting this wrong
 produces the classic "traffic doesn't pass but the logs look fine" failure.
 
-### Stage 1 — Telemetry spine
+### Stage 2 — Telemetry spine
 *Goal: observability, so you can debug everything after this.*
 
 - Vector parsing `RT_FLOW` syslog into ClickHouse
@@ -360,7 +360,7 @@ produces the classic "traffic doesn't pass but the logs look fine" failure.
 **Why this comes before personas:** you cannot tell whether a persona is behaving
 correctly without seeing its traffic. Building breadth first means debugging blind.
 
-### Stage 2 — Personas and the fake internet
+### Stage 3 — Personas and the fake internet
 *Goal: traffic that looks like an office.*
 
 - 6 personas: exec, developer, sales, support, finance, marketing
@@ -371,7 +371,7 @@ correctly without seeing its traffic. Building breadth first means debugging bli
 **Exit:** a 24-hour compressed run produces a plausible application mix, and the daily
 bandwidth curve has recognisable morning ramp, lunch dip, and evening decay.
 
-### Stage 3 — Network dashboard
+### Stage 4 — Network dashboard
 *Goal: the artefact you show people.*
 
 - Application traffic mix over time, bandwidth, concurrent sessions, top talkers
@@ -380,7 +380,7 @@ bandwidth curve has recognisable morning ramp, lunch dip, and evening decay.
 
 **Exit:** you can answer "what changed between run A and run B" without writing SQL.
 
-### Stage 4 — Pixel office
+### Stage 5 — Pixel office
 
 **Decision: build this ourselves. Do not fork pixel-agents.**
 
@@ -388,7 +388,7 @@ pixel-agents visualises *Claude Code coding agents* — its event model is agent
 edits a file, awaits permission. Ours is workers doing network activities. The mismatch
 bites hardest exactly where this project gets interesting: we need per-worker state with
 no analogue in their schema (current destination, live bandwidth, benign/malicious, alert
-state, blocked-by-policy). Stage 7's "worker turns red when the firewall cuts them off"
+state, blocked-by-policy). Stage 8's "worker turns red when the firewall cuts them off"
 has no slot in their model. Forking also means learning their provider/adapter/transport
 packages and VS Code extension packaging before changing anything — more work than writing
 it.
@@ -428,7 +428,7 @@ over WebSocket in whatever shape suits us. No `HookProvider` abstraction, no ada
 
 **Exit:** 25 characters animate in sync with live traffic, with under ~2s lag.
 
-### Stage 5 — Adversary layer
+### Stage 6 — Adversary layer
 
 Attack personas through the same engine. Start with the four that are genuinely visible in
 firewall flow logs:
@@ -447,7 +447,7 @@ persona with a twist rather than a separate machine.
 **Exit:** a scenario timeline can inject an attack at T+3h into an otherwise identical run,
 and `labelled_flows` correctly marks it.
 
-### Stage 6 — Detection
+### Stage 7 — Detection
 
 Build in this order — each step is a fair baseline for the next:
 
@@ -462,7 +462,7 @@ per attack family and per detector. Without it you'll be tuning on vibes.
 
 **Exit:** a results table comparing all detectors across all attack families.
 
-### Stage 7 — Response loop
+### Stage 8 — Response loop
 
 - Alert → NETCONF or REST policy push to cSRX → block the source
 - Pixel office shows the worker turning red and the flow being cut
@@ -475,17 +475,17 @@ office reacts.
 
 ## 7. ⚠️ Open questions
 
-1. **cSRX version and licence.** Do you have AppSecure/AppID and IDP entitlement? Without AppID the `application` field is near-useless and Stage 3's dashboard loses its most interesting dimension. There's a fallback — classify by SNI and destination port from the intent log — but it's worth knowing now.
+1. **cSRX version and licence.** Do you have AppSecure/AppID and IDP entitlement? Without AppID the `application` field is near-useless and Stage 4's dashboard loses its most interesting dimension. There's a fallback — classify by SNI and destination port from the intent log — but it's worth knowing now.
 2. **Ubuntu host specs.** RAM and core count set the realistic worker ceiling and whether ClickHouse and Grafana can share the box with the simulation.
-3. **TLS visibility.** TLS 1.3 with ECH leaves DPI seeing very little. Are you accepting SNI/JA3-level visibility, or introducing a decrypt point? This bounds what Stage 6 can possibly detect and is worth deciding before you build the feature extractor.
-4. **Time compression.** Should a simulated 24-hour day run in 24 hours, or compress to, say, 1 hour? Compression is much better for iteration, but it distorts beaconing intervals — the detection signal in Stage 6. Suggested answer: support both, and always evaluate detection at 1:1.
+3. **TLS visibility.** TLS 1.3 with ECH leaves DPI seeing very little. Are you accepting SNI/JA3-level visibility, or introducing a decrypt point? This bounds what Stage 7 can possibly detect and is worth deciding before you build the feature extractor.
+4. **Time compression.** Should a simulated 24-hour day run in 24 hours, or compress to, say, 1 hour? Compression is much better for iteration, but it distorts beaconing intervals — the detection signal in Stage 7. Suggested answer: support both, and always evaluate detection at 1:1.
 5. **Nextcloud vs a lighter SaaS mock.** Nextcloud is heavy. A small custom Flask app behind TLS may give equally realistic flow characteristics at a fraction of the resource cost.
 
 ---
 
 ## 8. Reusable from `5g_lab_in_a_box`
 
-Worth an inventory pass before Stage 0 — likely candidates:
+Worth an inventory pass before Stage 1 — likely candidates:
 
 - Docker Compose patterns and bridge/veth setup
 - cSRX bootstrap configuration and licence handling
@@ -499,7 +499,7 @@ Worth an inventory pass before Stage 0 — likely candidates:
 ```
 network_simulation/
 ├── compose/                 # docker-compose per stage
-│   ├── stage0.yml
+│   ├── stage1.yml
 │   └── full.yml
 ├── engine/                  # Python asyncio simulation engine
 │   ├── core/                # scheduler, RNG, worker state machine
@@ -519,5 +519,5 @@ network_simulation/
 
 ## 10. Immediate next step
 
-Stage 0, narrowly scoped: three workers, one nginx site, cSRX, flows landing in a CSV with
+Stage 1, narrowly scoped: three workers, one nginx site, cSRX, flows landing in a CSV with
 correct worker attribution. Everything in this document is downstream of that working.

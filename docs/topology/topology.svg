@@ -73,8 +73,8 @@
 <line x1="0" y1="918" x2="1360" y2="918" stroke="#18213c"/>
 </g>
 <rect x=".5" y=".5" width="1359" height="919" rx="14" fill="none" stroke="#243154"/>
-<text x="42" y="52" fill="#e8eefc" font-size="25" font-weight="700" text-anchor="start" letter-spacing="2.2" font-family="ui-monospace,SFMono-Regular,Menlo,monospace">STAGE 0 — TOPOLOGY</text>
-<text x="43" y="78" fill="#8492b8" font-size="12.5" font-weight="400" text-anchor="start" letter-spacing="0" font-family="ui-monospace,SFMono-Regular,Menlo,monospace">netsim-stage0  ·  cSRX 26.2R1.7  ·  all bridges internal (no route to the real internet)</text>
+<text x="42" y="52" fill="#e8eefc" font-size="25" font-weight="700" text-anchor="start" letter-spacing="2.2" font-family="ui-monospace,SFMono-Regular,Menlo,monospace">STAGE 1 — TOPOLOGY</text>
+<text x="43" y="78" fill="#8492b8" font-size="12.5" font-weight="400" text-anchor="start" letter-spacing="0" font-family="ui-monospace,SFMono-Regular,Menlo,monospace">netsim  ·  cSRX 26.2R1.7  ·  all bridges internal (no route to the real internet)</text>
 <rect x="30" y="96" width="1300" height="706" rx="12" fill="none" stroke="#243154" stroke-width="1.4" opacity="1.0" stroke-dasharray="7 6"/>
 <text x="48" y="120" fill="#5a6790" font-size="11" font-weight="400" text-anchor="start" letter-spacing="1.4" font-family="ui-monospace,SFMono-Regular,Menlo,monospace">Ubuntu x86_64 host — docker</text>
 <rect x="430" y="140" width="500" height="108" rx="10" fill="#141a33" stroke="#a78bfa" stroke-width="1.4" opacity="1.0"/>
@@ -135,7 +135,7 @@
 <text x="938" y="468" fill="#5a6790" font-size="9.5" font-weight="400" text-anchor="start" letter-spacing="0" font-family="ui-monospace,SFMono-Regular,Menlo,monospace">/ /small /medium /large /upload</text>
 <text x="938" y="484" fill="#5a6790" font-size="9.5" font-weight="400" text-anchor="start" letter-spacing="0" font-family="ui-monospace,SFMono-Regular,Menlo,monospace">cert signed by the lab CA (private)</text>
 <rect x="924" y="510" width="354" height="60" rx="8" fill="#0e1428" stroke="#5a6790" stroke-width="1" opacity="1.0"/>
-<text x="938" y="530" fill="#8492b8" font-size="10" font-weight="600" text-anchor="start" letter-spacing="0" font-family="ui-monospace,SFMono-Regular,Menlo,monospace">Stage 2 adds:</text>
+<text x="938" y="530" fill="#8492b8" font-size="10" font-weight="600" text-anchor="start" letter-spacing="0" font-family="ui-monospace,SFMono-Regular,Menlo,monospace">Stage 3 adds:</text>
 <text x="938" y="546" fill="#5a6790" font-size="9.5" font-weight="400" text-anchor="start" letter-spacing="0" font-family="ui-monospace,SFMono-Regular,Menlo,monospace">MinIO (S3) · Nextcloud · HLS · SMB · CoreDNS</text>
 <text x="938" y="560" fill="#5a6790" font-size="9.5" font-weight="400" text-anchor="start" letter-spacing="0" font-family="ui-monospace,SFMono-Regular,Menlo,monospace">return route 10.20.0.0/16 via 203.0.113.1</text>
 <line x1="452" y1="430" x2="566" y2="430" stroke="#38bdf8" stroke-width="2.2" marker-end="url(#a-38bdf8)"/>

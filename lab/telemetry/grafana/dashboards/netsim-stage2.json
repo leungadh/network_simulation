@@ -1,0 +1,621 @@
+{
+  "uid": "netsim-stage2",
+  "title": "NetSim \u2014 Stage 2 telemetry",
+  "description": "Labelled flow telemetry from cSRX. Every panel reads netsim.labelled_flows, the intent-to-flow join.",
+  "tags": [
+    "netsim",
+    "stage2"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "editable": true,
+  "graphTooltip": 1,
+  "templating": {
+    "list": [
+      {
+        "name": "run_id",
+        "label": "Run",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-clickhouse-datasource",
+          "uid": "netsim-ch"
+        },
+        "query": "SELECT DISTINCT run_id FROM netsim.flows ORDER BY run_id DESC",
+        "refresh": 1,
+        "sort": 0,
+        "current": {},
+        "includeAll": false,
+        "multi": false
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Join rate",
+      "description": "Share of firewall sessions matched to a worker intent. The number the whole dataset rests on \u2014 below 98% the labelling is unreliable and every downstream model inherits the problem.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "netsim-ch"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "netsim-ch"
+          },
+          "refId": "A",
+          "rawSql": "SELECT round(100 * avg(joined), 2) AS \"Join rate\" FROM netsim.labelled_flows WHERE run_id = '$run_id'",
+          "format": 1,
+          "queryType": "sql",
+          "editorType": "sql",
+          "pluginVersion": "4.0.0"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#d03b3b",
+                "value": null
+              },
+              {
+                "color": "#fab219",
+                "value": 90
+              },
+              {
+                "color": "#0ca30c",
+                "value": 98
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Classified",
+      "description": "Share of sessions AppID could name. 0% usually means the signature database is not installed, not that the firewall is broken.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "netsim-ch"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "netsim-ch"
+          },
+          "refId": "A",
+          "rawSql": "SELECT round(100 * (1 - avg(application IN ('UNKNOWN','NONE',''))), 2) AS \"Classified\" FROM netsim.labelled_flows WHERE run_id = '$run_id'",
+          "format": 1,
+          "queryType": "sql",
+          "editorType": "sql",
+          "pluginVersion": "4.0.0"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#d03b3b",
+                "value": null
+              },
+              {
+                "color": "#fab219",
+                "value": 50
+              },
+              {
+                "color": "#0ca30c",
+                "value": 95
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Sessions",
+      "description": "Closed sessions in this run.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "netsim-ch"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "netsim-ch"
+          },
+          "refId": "A",
+          "rawSql": "SELECT count() AS \"Sessions\" FROM netsim.labelled_flows WHERE run_id = '$run_id'",
+          "format": 1,
+          "queryType": "sql",
+          "editorType": "sql",
+          "pluginVersion": "4.0.0"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Traffic",
+      "description": "Total bytes both directions.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "netsim-ch"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "netsim-ch"
+          },
+          "refId": "A",
+          "rawSql": "SELECT sum(bytes_in + bytes_out) AS \"Traffic\" FROM netsim.labelled_flows WHERE run_id = '$run_id'",
+          "format": 1,
+          "queryType": "sql",
+          "editorType": "sql",
+          "pluginVersion": "4.0.0"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Sessions per minute",
+      "description": "Session rate over the run. The morning ramp, lunch dip and evening decay appear here once Stage 3 adds time-of-day curves.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "netsim-ch"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "netsim-ch"
+          },
+          "refId": "A",
+          "rawSql": "SELECT toStartOfMinute(ts) AS time, count() AS sessions FROM netsim.labelled_flows WHERE run_id = '$run_id' GROUP BY time ORDER BY time",
+          "format": 1,
+          "queryType": "sql",
+          "editorType": "sql",
+          "pluginVersion": "4.0.0"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "auto",
+            "pointSize": 8,
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisSoftMin": 0,
+            "gradientMode": "none",
+            "lineInterpolation": "smooth"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "A"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "palette-classic"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Bytes by application",
+      "description": "AppID classification over time. With one HTTPS destination this is a single SSL series; Stage 3's distinct hostnames give SNI something to tell apart.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "netsim-ch"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "netsim-ch"
+          },
+          "refId": "A",
+          "rawSql": "SELECT toStartOfMinute(ts) AS time, application, sum(bytes_in + bytes_out) AS bytes FROM netsim.labelled_flows WHERE run_id = '$run_id' GROUP BY time, application ORDER BY time",
+          "format": 1,
+          "queryType": "sql",
+          "editorType": "sql",
+          "pluginVersion": "4.0.0"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 18,
+            "showPoints": "auto",
+            "pointSize": 8,
+            "spanNulls": false,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "axisSoftMin": 0,
+            "gradientMode": "none",
+            "lineInterpolation": "smooth"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "A"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "palette-classic"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "table",
+      "title": "Top talkers",
+      "description": "Per-worker volume. Attribution to a named worker rather than a bare IP is exactly what the intent join buys.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "netsim-ch"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "netsim-ch"
+          },
+          "refId": "A",
+          "rawSql": "SELECT worker_name AS \"Worker\", persona AS \"Persona\", IPv4NumToString(src_ip) AS \"Source\", count() AS \"Sessions\", sum(bytes_in + bytes_out) AS \"Bytes\" FROM netsim.labelled_flows WHERE run_id = '$run_id' GROUP BY worker_name, persona, src_ip ORDER BY \"Bytes\" DESC LIMIT 25",
+          "format": 1,
+          "queryType": "sql",
+          "editorType": "sql",
+          "pluginVersion": "4.0.0"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": false
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Bytes"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "gradient"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "countRows": false
+        }
+      }
+    },
+    {
+      "type": "table",
+      "title": "Activity mix",
+      "description": "What the workers were actually doing \u2014 available only because each flow carries its intent. The firewall alone cannot produce this column.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "netsim-ch"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 12,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "netsim-ch"
+          },
+          "refId": "A",
+          "rawSql": "SELECT activity AS \"Activity\", count() AS \"Sessions\", round(avg(duration_ms)) AS \"Avg ms\", sum(bytes_in + bytes_out) AS \"Bytes\" FROM netsim.labelled_flows WHERE run_id = '$run_id' AND joined GROUP BY activity ORDER BY \"Sessions\" DESC",
+          "format": 1,
+          "queryType": "sql",
+          "editorType": "sql",
+          "pluginVersion": "4.0.0"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": false
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Bytes"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "countRows": false
+        }
+      }
+    }
+  ]
+}
