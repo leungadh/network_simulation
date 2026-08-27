@@ -233,8 +233,12 @@ def main():
         FROM netsim.labelled_flows WHERE {scope}
     """, run))[0]["secs"])
     mins = (span or 0) / 60
-    check(f"sustained run ({mins:.1f} min)", mins >= 30, warn=True,
-          hint="Stage 2 wants ≥30 minutes to call the join rate trustworthy.\n"
+    # 29 rather than 30: the span is measured from the first flow to the last,
+    # which is always shorter than DURATION_S — the first request lands after
+    # startup and the last before the engine exits. A 1800s run reports ~29.9,
+    # so a 30.0 threshold could never be met.
+    check(f"sustained run ({mins:.1f} min)", mins >= 29, warn=True,
+          hint="Stage 2 wants a ~30 minute run to call the join rate trustworthy.\n"
                "Set DURATION_S=1800 in .env and re-run. Not fatal — the other\n"
                "checks are still meaningful on a short run.")
 

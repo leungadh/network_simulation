@@ -71,19 +71,29 @@ topology, defects fixed, and measured results.
 
 ### Stage 2 results
 
-Telemetry spine verified end to end: **100% flow-to-intent join across 95
-sessions**, 100% source-port capture, AppID classifying, both pipelines
-ingesting into ClickHouse and readable in Grafana.
+Telemetry spine verified over a sustained 30-minute run:
 
-Four defects, all in code I could not test locally:
+| | |
+|---|---|
+| Sessions | 2070 firewall closes against 2070 engine intents |
+| Flow-to-intent join | **100%** — zero unmatched, zero outside the window |
+| AppID classification | 100% |
+| Worker distribution | 695 / 702 / 673 |
+
+An earlier 95-session run also read 100%, but at 20× the volume the number
+means something: ephemeral port reuse, clock drift and session-timeout
+boundaries all had room to appear, and none did.
+
+Four defects along the way, every one in code that could not be executed
+locally before shipping:
 
 - **VRL syntax** — `else if` on its own line, and `to_timestamp`, which does not
-  exist. A VRL syntax error is fatal to the *whole* config, so the RT_FLOW
-  parser also killed the intents pipeline, which never touches cSRX. Both
-  sources read zero, which looked like a firewall problem. `make vector-check`
-  now compile-checks without starting anything.
-- **ClickHouse bound `::`** on a host with IPv6 disabled, so no port listened.
-- **Health probes** that tested the wrong thing — first `clickhouse-client` with
+  exist. A VRL error is fatal to the *whole* config, so the RT_FLOW parser also
+  killed the intents pipeline, which never touches cSRX. Both sources read
+  zero, which looked like a firewall problem. `make vector-check` now
+  compile-checks without starting anything.
+- **ClickHouse bound `::`** on a host with IPv6 disabled, so nothing listened.
+- **Health probes testing the wrong thing** — first `clickhouse-client` with
   credentials the container might not have, then `localhost`, which resolves to
   `::1` first and was refused. Both reported a healthy server as broken.
 - **Quoted integers** — ClickHouse returns `UInt64` as JSON strings, so every
