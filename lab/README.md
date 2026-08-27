@@ -464,6 +464,25 @@ interface Vector and `verify_sql.py` need is unusable — the check therefore
 tests **both** interfaces, because verifying one and inferring the other is how
 this stayed hidden.
 
+**`network netsim_mgmt has active endpoints`.** Compose wants to reconcile a
+network whose definition changed (usually `MGMT_EGRESS`), but cSRX is launched
+outside compose and holds an endpoint on it, so compose cannot remove it.
+
+Either avoid touching networks:
+
+```bash
+docker restart netsim-vector      # config is a bind mount; restart re-reads it
+```
+
+or realign everything:
+
+```bash
+make down && make up              # removes cSRX too, then rebuilds in order
+```
+
+`make down` destroys the AppID database, but `make up` reinstalls it
+automatically from `csrx/signatures/`.
+
 **Nothing ingested — both flows AND intents at zero.** That combination means
 Vector, not cSRX: intents come from tailing a file and never touch the firewall,
 so if both are empty the ingester is down.

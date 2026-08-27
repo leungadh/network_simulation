@@ -138,9 +138,12 @@ traffic:
 	@echo "==> run_id: $(RUN_ID)"
 	@# Vector stamps run_id onto every flow row, so it is recreated alongside
 	@# the engine. Two containers minting their own ids was a real defect.
-	RUN_ID=$(RUN_ID) SEED=$(SEED) docker compose up -d --force-recreate vector
+	@# --no-deps: cSRX is launched outside compose and holds endpoints on the
+	@# mgmt network. Without this, compose tries to reconcile networks it thinks
+	@# are unused and fails with "network netsim_mgmt has active endpoints".
+	RUN_ID=$(RUN_ID) SEED=$(SEED) docker compose up -d --force-recreate --no-deps vector
 	@sleep 2
-	RUN_ID=$(RUN_ID) SEED=$(SEED) docker compose up -d --force-recreate workstation
+	RUN_ID=$(RUN_ID) SEED=$(SEED) docker compose up -d --force-recreate --no-deps workstation
 	@docker compose logs -f workstation
 
 # Score the run recorded by the last `make traffic`, from ClickHouse.
