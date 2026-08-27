@@ -1,5 +1,13 @@
 apiVersion: 1
 
+# Grafana expands $VAR in provisioning files, but NOT the shell-style
+# ${VAR:-fallback} form — that expands to nothing, and the plugin then falls
+# back to the 'default' user, which ClickHouse rejects:
+#   "default: Authentication failed: password is incorrect, or there is no
+#    user with such name"
+# The variables must also exist in the GRAFANA container's environment; setting
+# them only on the clickhouse service leaves nothing here to expand.
+
 datasources:
   - name: ClickHouse
     uid: netsim-ch
@@ -11,9 +19,9 @@ datasources:
       port: 9000
       protocol: native
       secure: false
-      username: ${CLICKHOUSE_USER:-netsim}
+      username: $CLICKHOUSE_USER
       defaultDatabase: netsim
       tlsSkipVerify: true
     secureJsonData:
-      password: ${CLICKHOUSE_PASSWORD:-netsim}
+      password: $CLICKHOUSE_PASSWORD
     editable: false

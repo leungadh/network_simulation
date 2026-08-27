@@ -187,6 +187,11 @@ services:
       - ./telemetry/grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana-data:/var/lib/grafana
     environment:
+      # The datasource provisioning file references these by $VAR. Without them
+      # in THIS container's environment the expansion is empty and the plugin
+      # falls back to the 'default' user, which ClickHouse rejects.
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-netsim}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-netsim}
       # Installed on first start — needs egress, which is why the telemetry
       # network is not internal.
       GF_INSTALL_PLUGINS: grafana-clickhouse-datasource

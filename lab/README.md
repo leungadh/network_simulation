@@ -483,6 +483,22 @@ make down && make up              # removes cSRX too, then rebuilds in order
 `make down` destroys the AppID database, but `make up` reinstalls it
 automatically from `csrx/signatures/`.
 
+**Grafana panels error with `default: Authentication failed`.** The datasource
+is connecting as `default` rather than `netsim`. Two causes, and they stack:
+
+- Grafana provisioning expands `$VAR` but **not** `${VAR:-fallback}`. The
+  shell-style form expands to nothing and the plugin falls back to `default`.
+- The variables must exist in the **Grafana** container's environment. Setting
+  them only on the `clickhouse` service leaves nothing to expand.
+
+Both are fixed in `provisioning/datasources/clickhouse.yaml` and the compose
+`grafana` service. Provisioning is only read at startup:
+
+```bash
+docker compose up -d --force-recreate --no-deps grafana
+docker logs netsim-grafana 2>&1 | grep -i clickhouse | tail -5
+```
+
 **Nothing ingested — both flows AND intents at zero.** That combination means
 Vector, not cSRX: intents come from tailing a file and never touch the firewall,
 so if both are empty the ingester is down.
