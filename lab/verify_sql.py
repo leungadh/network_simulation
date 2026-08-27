@@ -17,6 +17,8 @@ import urllib.error
 import urllib.request
 
 CH = os.environ.get("CLICKHOUSE_URL", "http://127.0.0.1:8123")
+CH_USER = os.environ.get("CLICKHOUSE_USER", "netsim")
+CH_PASS = os.environ.get("CLICKHOUSE_PASSWORD", "netsim")
 RUN_ID = os.environ.get("RUN_ID", "")
 JOIN_WINDOW_MS = 5000
 
@@ -28,6 +30,10 @@ def ch(query: str):
     """Run a query, return a list of dicts."""
     body = (query.rstrip().rstrip(";") + " FORMAT JSONEachRow").encode()
     req = urllib.request.Request(CH, data=body, method="POST")
+    # The default user has no network access unless credentials are configured,
+    # so authenticate explicitly rather than relying on an anonymous default.
+    req.add_header("X-ClickHouse-User", CH_USER)
+    req.add_header("X-ClickHouse-Key", CH_PASS)
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
             text = resp.read().decode()

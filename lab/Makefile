@@ -156,13 +156,19 @@ dashboard:
 	@echo "==> http://localhost:$(GF_PORT)"
 
 # Ad-hoc query:  make sql Q="SELECT count() FROM netsim.flows"
+CH_USER := $(shell [ -f ./.env ] && . ./.env; echo $${CLICKHOUSE_USER:-netsim})
+CH_PASS := $(shell [ -f ./.env ] && . ./.env; echo $${CLICKHOUSE_PASSWORD:-netsim})
+
 sql:
-	@curl -sS "http://127.0.0.1:8123/" --data-binary "$${Q:-SELECT 1}"
+	@curl -sS "http://127.0.0.1:8123/" \
+		-H "X-ClickHouse-User: $(CH_USER)" -H "X-ClickHouse-Key: $(CH_PASS)" \
+		--data-binary "$${Q:-SELECT 1}"
 
 # Per-run health straight from the view every later stage consumes.
 runs:
-	@curl -sS "http://127.0.0.1:8123/" --data-binary \
-		"SELECT * FROM netsim.run_summary FORMAT PrettyCompact"
+	@curl -sS "http://127.0.0.1:8123/" \
+		-H "X-ClickHouse-User: $(CH_USER)" -H "X-ClickHouse-Key: $(CH_PASS)" \
+		--data-binary "SELECT * FROM netsim.run_summary FORMAT PrettyCompact"
 
 # Diagnose source-port capture, the join key the labelled dataset rests on.
 probe-port:
@@ -230,7 +236,9 @@ status:
 	@echo '--- telemetry ---'
 	-@curl -sS --max-time 3 "http://127.0.0.1:8123/ping" 2>/dev/null | sed 's/^/  clickhouse: /' || echo '  clickhouse: unreachable'
 	-@curl -sS --max-time 3 -o /dev/null -w '  grafana:    HTTP %{http_code}\n' "http://127.0.0.1:$(GF_PORT)/api/health" 2>/dev/null || echo '  grafana:    unreachable'
-	-@curl -sS --max-time 3 "http://127.0.0.1:8123/" --data-binary "SELECT count() FROM netsim.flows" 2>/dev/null | sed 's/^/  flow rows:  /'
+	-@curl -sS --max-time 3 "http://127.0.0.1:8123/" \
+		-H "X-ClickHouse-User: $(CH_USER)" -H "X-ClickHouse-Key: $(CH_PASS)" \
+		--data-binary "SELECT count() FROM netsim.flows" 2>/dev/null | sed 's/^/  flow rows:  /'
 	@echo
 	@echo '--- last run ---'
 	@echo "  run_id: $$(cat out/current_run_id 2>/dev/null || echo '(none)')"

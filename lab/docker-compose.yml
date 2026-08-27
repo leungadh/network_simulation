@@ -120,16 +120,27 @@ services:
     ports:
       # Host-only: verify.py queries this from outside the containers.
       - "127.0.0.1:8123:8123"
+    environment:
+      # Without these the image entrypoint prints "disabling network access for
+      # user 'default'" and restricts that account to local connections. Vector
+      # and verify_sql.py both use the HTTP interface, so the restriction breaks
+      # ingestion while clickhouse-client still works locally — a failure that
+      # looks like the server is fine.
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-netsim}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-netsim}
+      CLICKHOUSE_DB: netsim
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
     volumes:
       - ./telemetry/clickhouse:/docker-entrypoint-initdb.d:ro
       - clickhouse-data:/var/lib/clickhouse
     ulimits:
       nofile: { soft: 262144, hard: 262144 }
     healthcheck:
-      # clickhouse-client ships in the image; wget does not necessarily, and a
-      # missing binary makes the check fail forever — the container then sits
-      # in "starting" until retries exhaust, which looks like a startup hang.
-      test: ["CMD-SHELL", "clickhouse-client --query 'SELECT 1' >/dev/null 2>&1 || exit 1"]
+      # Test BOTH interfaces. Vector and verify_sql.py use HTTP on 8123;
+      # Grafana uses the native protocol on 9000. Checking only one lets a
+      # partial start report healthy while the path we depend on is dead.
+      test: ["CMD-SHELL",
+             "wget -qO- http://localhost:8123/ping >/dev/null 2>&1 && clickhouse-client --user \"$$CLICKHOUSE_USER\" --password \"$$CLICKHOUSE_PASSWORD\" --query 'SELECT 1' >/dev/null 2>&1"]
       interval: 5s
       timeout: 5s
       retries: 24

@@ -11,7 +11,9 @@ datasources:
       port: 9000
       protocol: native
       secure: false
-      username: default
+      username: ${CLICKHOUSE_USER:-netsim}
       defaultDatabase: netsim
       tlsSkipVerify: true
+    secureJsonData:
+      password: ${CLICKHOUSE_PASSWORD:-netsim}
     editable: false

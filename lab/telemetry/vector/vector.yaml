@@ -148,6 +148,10 @@ sinks:
     endpoint: http://clickhouse:8123
     database: netsim
     table: flows
+    auth:
+      strategy: basic
+      user: ${CLICKHOUSE_USER:-netsim}
+      password: ${CLICKHOUSE_PASSWORD:-netsim}
     skip_unknown_fields: true
     date_time_best_effort: true
     batch:
@@ -162,6 +166,10 @@ sinks:
     endpoint: http://clickhouse:8123
     database: netsim
     table: intents
+    auth:
+      strategy: basic
+      user: ${CLICKHOUSE_USER:-netsim}
+      password: ${CLICKHOUSE_PASSWORD:-netsim}
     skip_unknown_fields: true
     date_time_best_effort: true
     batch:
