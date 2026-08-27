@@ -35,8 +35,8 @@ replayed with and without an attack.
 | Stage | Scope | State |
 |---|---|---|
 | 1 | Walking skeleton — 3 workers, 1 TLS site, cSRX, flows to CSV | **complete** |
-| 2 | Telemetry spine — Vector, ClickHouse, Grafana, the labelled join | built, awaiting verification |
-| 3 | Personas and the fake internet — 6 personas, 25 workers | not started |
+| 2 | Telemetry spine — Vector, ClickHouse, Grafana, the labelled join | **complete** |
+| 3 | Personas and the fake internet — 6 personas, 25 workers | next |
 | 4 | Network dashboard | not started |
 | 5 | Pixel office — self-built Canvas 2D visualiser | not started |
 | 6 | Adversary layer — beaconing, DNS tunnelling, exfil, scanning | not started |
@@ -68,6 +68,26 @@ corrupted the labelled dataset rather than failing loudly:
 
 Milestone write-up: [`docs/Stage_2.md`](docs/Stage_2.md) — architecture,
 topology, defects fixed, and measured results.
+
+### Stage 2 results
+
+Telemetry spine verified end to end: **100% flow-to-intent join across 95
+sessions**, 100% source-port capture, AppID classifying, both pipelines
+ingesting into ClickHouse and readable in Grafana.
+
+Four defects, all in code I could not test locally:
+
+- **VRL syntax** — `else if` on its own line, and `to_timestamp`, which does not
+  exist. A VRL syntax error is fatal to the *whole* config, so the RT_FLOW
+  parser also killed the intents pipeline, which never touches cSRX. Both
+  sources read zero, which looked like a firewall problem. `make vector-check`
+  now compile-checks without starting anything.
+- **ClickHouse bound `::`** on a host with IPv6 disabled, so no port listened.
+- **Health probes** that tested the wrong thing — first `clickhouse-client` with
+  credentials the container might not have, then `localhost`, which resolves to
+  `::1` first and was refused. Both reported a healthy server as broken.
+- **Quoted integers** — ClickHouse returns `UInt64` as JSON strings, so every
+  numeric comparison in the verifier raised `TypeError`.
 
 Full design: [`docs/architecture_and_staging_plan.md`](docs/architecture_and_staging_plan.md)
 Stage 1 topology: [`docs/topology/topology.svg`](docs/topology/topology.svg)

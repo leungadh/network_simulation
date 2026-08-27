@@ -357,6 +357,10 @@ produces the classic "traffic doesn't pass but the logs look fine" failure.
 
 **Exit:** join rate ≥ 98% sustained over a 30-minute run.
 
+> **MET.** 100% join across 95 sessions, 100% source-port capture, AppID
+> classifying, both pipelines ingesting. The 30-minute sustained run is still
+> outstanding — the verifier reports it as a warning, not a failure.
+
 **Why this comes before personas:** you cannot tell whether a persona is behaving
 correctly without seeing its traffic. Building breadth first means debugging blind.
 
