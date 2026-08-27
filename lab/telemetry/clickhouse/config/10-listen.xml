@@ -1,0 +1,19 @@
+<clickhouse>
+    <!--
+      This host has IPv6 disabled. The image's default <listen_host>::</listen_host>
+      then fails to bind every port with:
+
+        Listen [::]:8123 failed: DNS error: EAI:
+        Address family for hostname not supported
+
+      IPv4 may still come up afterwards, but the binds are failing first and on
+      some configurations nothing listens at all — which presents as a container
+      stuck in "starting" while clickhouse-client still works over the local
+      socket. Bind IPv4 explicitly instead.
+
+      listen_try lets the server continue when an address family is unavailable
+      rather than aborting, so this stays correct on a host that does have IPv6.
+    -->
+    <listen_host>0.0.0.0</listen_host>
+    <listen_try>1</listen_try>
+</clickhouse>

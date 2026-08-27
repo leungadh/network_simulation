@@ -131,7 +131,10 @@ services:
       CLICKHOUSE_DB: netsim
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
     volumes:
-      - ./telemetry/clickhouse:/docker-entrypoint-initdb.d:ro
+      - ./telemetry/clickhouse/initdb:/docker-entrypoint-initdb.d:ro
+      # Binds IPv4 explicitly — this host has IPv6 disabled and the image
+      # default (<listen_host>::</listen_host>) fails to bind every port.
+      - ./telemetry/clickhouse/config:/etc/clickhouse-server/config.d:ro
       - clickhouse-data:/var/lib/clickhouse
     ulimits:
       nofile: { soft: 262144, hard: 262144 }

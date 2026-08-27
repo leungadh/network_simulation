@@ -380,6 +380,30 @@ Either way the database lives in the container filesystem, so `make down`
 destroys it. `make up` reinstalls automatically when a package is present in
 `csrx/signatures/`; after an online download you must repeat it.
 
+**ClickHouse stuck in `starting`, or nothing listening on 8123.** Look in the
+server's own log — it writes to a file, so `docker logs` shows almost nothing:
+
+```bash
+docker exec netsim-clickhouse tail -40 \
+  /var/log/clickhouse-server/clickhouse-server.err.log
+docker exec netsim-clickhouse netstat -tln
+```
+
+Two causes seen here:
+
+*IPv6 is disabled on the host.* The image default binds `::`, which then fails
+on every port: `Listen [::]:8123 failed ... Address family for hostname not
+supported`. `telemetry/clickhouse/config/10-listen.xml` binds `0.0.0.0`
+explicitly and sets `listen_try`, which fixes it and stays correct on a host
+that does have IPv6.
+
+*No credentials.* Without `CLICKHOUSE_USER` / `CLICKHOUSE_PASSWORD` the
+entrypoint disables network access for the `default` user. `clickhouse-client`
+keeps working over the local socket, so the server looks healthy while the HTTP
+interface Vector and `verify_sql.py` need is unusable — the check therefore
+tests **both** interfaces, because verifying one and inferring the other is how
+this stayed hidden.
+
 **No flows at all.** Check syslog is leaving cSRX:
 
 ```bash
