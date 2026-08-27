@@ -190,7 +190,7 @@ vector-check:
 		-v "$$(pwd)/telemetry/vector/vector.yaml:/etc/vector/vector.yaml:ro" \
 		-e RUN_ID=check -e CLICKHOUSE_USER=$(CH_USER) -e CLICKHOUSE_PASSWORD=$(CH_PASS) \
 		timberio/vector:0.41.1-alpine \
-		validate --no-environment --config /etc/vector/vector.yaml \
+		validate --no-environment --config-yaml /etc/vector/vector.yaml \
 		&& echo "==> vector config OK"
 
 # Diagnose source-port capture, the join key the labelled dataset rests on.
